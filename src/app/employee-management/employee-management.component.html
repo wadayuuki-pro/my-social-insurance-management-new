@@ -1,0 +1,556 @@
+<div class="employee-management-container">
+  <h1>従業員管理</h1>
+  <div class="employee-actions">
+    <form [formGroup]="searchForm" style="display: flex; gap: 1rem; align-items: center; width: 100%;">
+      <input type="text" formControlName="employee_id" placeholder="社員IDで検索" />
+      <button type="button" (click)="$event.preventDefault()">検索</button>
+      <button type="button">CSVインポート</button>
+      <button type="button" (click)="exportAllEmployeesCSV()">CSVエクスポート</button>
+      <app-add-member-button (addMember)="openNewEmployeeModal()"></app-add-member-button>
+    </form>
+  </div>
+
+  <!-- 検索・ソート条件設定セクション -->
+  <div class="search-sort-section">
+    <div class="search-sort-header">
+      <h3>検索・ソート条件</h3>
+      <button type="button" class="toggle-button" (click)="toggleSearchSortPanel()">
+        {{ isSearchSortPanelOpen ? '閉じる' : '開く' }}
+      </button>
+    </div>
+    
+    <div class="search-sort-panel" *ngIf="isSearchSortPanelOpen">
+      <form [formGroup]="searchSortForm" class="search-sort-form">
+        <!-- 検索条件 -->
+        <div class="search-conditions">
+          <h4>検索条件</h4>
+          <div class="search-grid">
+            <div class="search-item">
+              <label>社員ID</label>
+              <input type="text" formControlName="employee_code" placeholder="例：EMP001">
+            </div>
+            <div class="search-item">
+              <label>氏名</label>
+              <input type="text" formControlName="name" placeholder="例：山田">
+            </div>
+            <div class="search-item">
+              <label>所属部署</label>
+              <select formControlName="department">
+                <option value="">すべて</option>
+                <option *ngFor="let dep of departments" [value]="dep.department_id">
+                  {{ dep.department_name }}
+                </option>
+              </select>
+            </div>
+            <div class="search-item">
+              <label>雇用形態</label>
+              <select formControlName="employment_type">
+                <option value="">すべて</option>
+                <option value="正社員">正社員</option>
+                <option value="契約社員">契約社員</option>
+                <option value="派遣社員">派遣社員</option>
+                <option value="パート">パート</option>
+                <option value="アルバイト">アルバイト</option>
+                <option value="業務委託">業務委託</option>
+                <option value="その他">その他</option>
+              </select>
+            </div>
+            <div class="search-item">
+              <label>在籍ステータス</label>
+              <select formControlName="status">
+                <option value="">すべて</option>
+                <option value="在籍中">在籍中</option>
+                <option value="休職中">休職中</option>
+                <option value="産休中">産休中</option>
+                <option value="育休中">育休中</option>
+                <option value="退職予定">退職予定</option>
+                <option value="退職">退職</option>
+              </select>
+            </div>
+            <div class="search-item">
+              <label>健康保険加入</label>
+              <select formControlName="health_insurance">
+                <option value="">すべて</option>
+                <option value="true">加入</option>
+                <option value="false">未加入</option>
+              </select>
+            </div>
+            <div class="search-item">
+              <label>厚生年金加入</label>
+              <select formControlName="pension_insurance">
+                <option value="">すべて</option>
+                <option value="true">加入</option>
+                <option value="false">未加入</option>
+              </select>
+            </div>
+            <div class="search-item">
+              <label>扶養家族</label>
+              <select formControlName="has_dependents">
+                <option value="">すべて</option>
+                <option value="true">有</option>
+                <option value="false">無</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- ソート条件 -->
+        <div class="sort-conditions">
+          <h4>ソート条件</h4>
+          <div class="sort-grid">
+            <div class="sort-item">
+              <label>第1ソート</label>
+              <select formControlName="sort1_field">
+                <option value="">選択なし</option>
+                <option value="employee_code">社員ID</option>
+                <option value="last_name_kanji">氏名</option>
+                <option value="employment_start_date">勤務開始日</option>
+                <option value="updated_at">最終更新日</option>
+              </select>
+              <select formControlName="sort1_order">
+                <option value="asc">昇順</option>
+                <option value="desc">降順</option>
+              </select>
+            </div>
+            <div class="sort-item">
+              <label>第2ソート</label>
+              <select formControlName="sort2_field">
+                <option value="">選択なし</option>
+                <option value="employee_code">社員ID</option>
+                <option value="last_name_kanji">氏名</option>
+                <option value="employment_start_date">勤務開始日</option>
+                <option value="updated_at">最終更新日</option>
+              </select>
+              <select formControlName="sort2_order">
+                <option value="asc">昇順</option>
+                <option value="desc">降順</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- ボタン -->
+        <div class="search-sort-buttons">
+          <button type="button" class="search-button" (click)="onSearch()">検索</button>
+          <button type="button" class="reset-button" (click)="onReset()">条件リセット</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="table-container">
+    <table class="employee-table">
+      <thead>
+        <tr>
+          <th style="min-width: 100px;">社員ID</th>
+          <th style="min-width: 150px;">氏名</th>
+          <th style="min-width: 150px;">所属部署/拠点</th>
+          <th style="min-width: 120px;">勤務開始日</th>
+          <th style="min-width: 120px;">健康保険加入状況</th>
+          <th style="min-width: 120px;">厚生年金加入状況</th>
+          <th style="min-width: 120px;">扶養家族の有無</th>
+          <th style="min-width: 100px;">状態</th>
+          <th style="min-width: 120px;">最終更新日</th>
+          <th style="min-width: 150px;">詳細</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let emp of filteredEmployees">
+          <td>{{ emp.employee_code }}</td>
+          <td>{{ emp.last_name_kanji }} {{ emp.first_name_kanji }}</td>
+          <td>{{ emp.department || '-' }}</td>
+          <td>{{ emp.employment_start_date || '-' }}</td>
+          <td>{{ emp.health_insurance_enrolled ? '加入' : '未加入' }}</td>
+          <td>{{ emp.pension_insurance_enrolled ? '加入' : '未加入' }}</td>
+          <td>{{ emp.has_dependents ? '有' : '無' }}</td>
+          <td>{{ emp.status || '在籍中' }}</td>
+          <td>{{ emp.updated_at ? (emp.updated_at.toDate() | date:'yyyy/MM/dd') : '-' }}</td>
+          <td class="detail-cell">
+            <button (click)="openDetail(emp)">詳細</button>
+            <button (click)="exportEmployeeCSV(emp)" style="margin-left: 0.5rem; background: #4caf50; color: white;">CSV出力</button>
+          </td>
+        </tr>
+        <tr *ngIf="filteredEmployees.length === 0">
+          <td colspan="10" style="text-align:center; color:#888;">該当する従業員がいません</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 新規メンバー追加モーダル -->
+  <div class="employee-detail-modal" *ngIf="showNewEmployeeModal">
+    <div class="employee-detail-modal-content">
+      <div class="modal-header">
+        <h2>新規メンバー追加</h2>
+        <button type="button" class="close-button" (click)="closeNewEmployeeModal()">×</button>
+      </div>
+      <form [formGroup]="newEmployeeForm" style="display: flex; flex-direction: column; gap: 0.7rem;">
+        <ng-container *ngFor="let field of employeeFieldOrder">
+          <div class="detail-row" *ngIf="field !== 'created_at' && field !== 'updated_at' && field !== 'dependents'">
+            <label>{{ employeeFieldLabels[field] || field }} <span style="color: red;" *ngIf="field === 'employee_code' || field === 'last_name_kanji' || field === 'first_name_kanji' || field === 'last_name_kana' || field === 'first_name_kana' || field === 'email'">*</span></label>
+            <ng-container [ngSwitch]="field">
+              <ng-container *ngSwitchCase="'role'">
+                <select [formControlName]="field">
+                  <option value="admin">管理者</option>
+                  <option value="hr">人事担当</option>
+                  <option value="manager">承認者</option>
+                </select>
+              </ng-container>
+              <ng-container *ngSwitchCase="'department_id'">
+                <select [formControlName]="field" [disabled]="departments.length === 0">
+                  <option *ngIf="departments.length === 0" value="">選択できません</option>
+                  <option *ngFor="let dep of departments" [value]="dep.department_id">{{ dep.department_id }}（{{ dep.department_name || '' }}）</option>
+                </select>
+              </ng-container>
+              <ng-container *ngSwitchCase="'company_id'">
+                <input [formControlName]="field" [attr.disabled]="true" />
+              </ng-container>
+              <ng-container *ngSwitchCase="'has_dependents'">
+                <input [value]="newEmployeeForm.get(field)?.value ? '有' : '無'" disabled />
+              </ng-container>
+              <ng-container *ngSwitchCase="'health_insurance_enrolled'">
+                <input [value]="newEmployeeForm.get(field)?.value ? '有' : '無'" disabled />
+              </ng-container>
+              <ng-container *ngSwitchCase="'pension_insurance_enrolled'">
+                <input [value]="newEmployeeForm.get(field)?.value ? '有' : '無'" disabled />
+              </ng-container>
+              <ng-container *ngSwitchCase="'date_of_birth'">
+                <input [formControlName]="field" type="date" [placeholder]="employeeFieldPlaceholders[field] || ''" />
+              </ng-container>
+              <ng-container *ngSwitchCase="'employment_start_date'">
+                <input [formControlName]="field" type="date" [placeholder]="employeeFieldPlaceholders[field] || ''" />
+              </ng-container>
+              <ng-container *ngSwitchCase="'employment_end_date'">
+                <input [formControlName]="field" type="date" [placeholder]="employeeFieldPlaceholders[field] || ''" />
+              </ng-container>
+              <ng-container *ngSwitchCase="'status'">
+                <select [formControlName]="field">
+                  <option value="">選択してください</option>
+                  <option value="在籍中">在籍中</option>
+                  <option value="休職中">休職中</option>
+                  <option value="産休中">産休中</option>
+                  <option value="育休中">育休中</option>
+                  <option value="退職予定">退職予定</option>
+                  <option value="退職">退職</option>
+                </select>
+              </ng-container>
+              <ng-container *ngSwitchCase="'gender'">
+                <select [formControlName]="field">
+                  <option value="">選択してください</option>
+                  <option value="男性">男性</option>
+                  <option value="女性">女性</option>
+                </select>
+              </ng-container>
+              <ng-container *ngSwitchCase="'employment_type'">
+                <select [formControlName]="field">
+                  <option value="">選択してください</option>
+                  <option value="正社員">正社員</option>
+                  <option value="契約社員">契約社員</option>
+                  <option value="派遣社員">派遣社員</option>
+                  <option value="パート">パート</option>
+                  <option value="アルバイト">アルバイト</option>
+                  <option value="業務委託">業務委託</option>
+                  <option value="その他">その他</option>
+                </select>
+              </ng-container>
+              <ng-container *ngSwitchDefault>
+                <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" />
+                <div class="error-message" *ngIf="(field === 'last_name_kana' || field === 'first_name_kana') && newEmployeeForm.get(field)?.errors?.['katakana'] && newEmployeeForm.get(field)?.touched">
+                  全角カタカナで入力してください
+                </div>
+              </ng-container>
+            </ng-container>
+          </div>
+        </ng-container>
+        <!-- dependents専用UI -->
+        <div class="dependents-section">
+          <label>{{ employeeFieldLabels['dependents'] || '扶養者情報' }}</label>
+          <div class="dependents-container">
+            <div class="dependents-header">
+              <h3>扶養者一覧</h3>
+              <button type="button" (click)="openDependentModal()" class="add-dependent-btn">
+                <span class="plus-icon">+</span>
+                扶養者を追加
+              </button>
+            </div>
+            <div class="dependents-table-container">
+              <table class="dependents-table">
+                <thead>
+                  <tr>
+                    <th>氏名</th>
+                    <th>続柄</th>
+                    <th>生年月日</th>
+                    <th>性別</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let dep of newEmployeeDependentsArray.controls; let i = index" [formGroup]="$any(dep)" class="dependent-row">
+                    <td>{{ dep.value.name }}</td>
+                    <td>{{ dep.value.relationship }}</td>
+                    <td>{{ dep.value.birthdate }}</td>
+                    <td>{{ dep.value.gender }}</td>
+                    <td>
+                      <div class="dependent-actions">
+                        <button type="button" (click)="editNewEmployeeDependent(i)" class="remove-dependent-btn" style="background:#42a5f5; color:#fff;">編集</button>
+                        <button type="button" (click)="removeNewEmployeeDependent(i)" class="remove-dependent-btn"><span class="remove-icon">×</span></button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr *ngIf="newEmployeeDependentsArray.length === 0">
+                    <td colspan="5" class="no-dependents-message">
+                      扶養者情報がありません。追加ボタンから登録してください。
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="detail-row" style="margin-top: 1rem;">
+          <button type="button" (click)="saveNewEmployee()" style="background: #4caf50; color: white;">保存</button>
+          <button type="button" (click)="closeNewEmployeeModal()" style="margin-left: 0.5rem;">キャンセル</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 詳細情報モーダル（今後実装） -->
+  <div class="employee-detail-modal" *ngIf="showDetailModal">
+    <div class="employee-detail-modal-content">
+      <div class="modal-header">
+        <h2>従業員詳細（編集）</h2>
+        <button type="button" class="close-button" (click)="closeDetail()">×</button>
+      </div>
+      <form [formGroup]="detailForm" style="display: flex; flex-direction: column; gap: 0.7rem;">
+        <ng-container *ngIf="detailForm">
+          <ng-container *ngFor="let field of employeeFieldOrder">
+            <div class="detail-row" *ngIf="detailForm.get(field) && field !== 'created_at' && field !== 'updated_at' && field !== 'dependents'">
+              <label>{{ employeeFieldLabels[field] || field }}</label>
+              <ng-container [ngSwitch]="field">
+                <ng-container *ngSwitchCase="'role'">
+                  <select [formControlName]="field">
+                    <option value="admin">管理者</option>
+                    <option value="hr">人事担当</option>
+                    <option value="manager">承認者</option>
+                  </select>
+                </ng-container>
+                <ng-container *ngSwitchCase="'department_id'">
+                  <select [formControlName]="field" [disabled]="departments.length === 0">
+                    <option *ngIf="departments.length === 0" value="">選択できません</option>
+                    <option *ngFor="let dep of departments" [value]="dep.department_id">{{ dep.department_id }}（{{ dep.department_name || '' }}）</option>
+                  </select>
+                </ng-container>
+                <ng-container *ngSwitchCase="'company_id'">
+                  <input [formControlName]="field" [attr.disabled]="true" />
+                </ng-container>
+                <ng-container *ngSwitchCase="'password'">
+                  <input [formControlName]="field" [attr.disabled]="true" />
+                </ng-container>
+                <ng-container *ngSwitchCase="'has_dependents'">
+                  <input [value]="detailForm.get(field)?.value ? '有' : '無'" disabled />
+                </ng-container>
+                <ng-container *ngSwitchCase="'health_insurance_enrolled'">
+                  <input [value]="detailForm.get(field)?.value ? '有' : '無'" disabled />
+                </ng-container>
+                <ng-container *ngSwitchCase="'pension_insurance_enrolled'">
+                  <input [value]="detailForm.get(field)?.value ? '有' : '無'" disabled />
+                </ng-container>
+                <ng-container *ngSwitchCase="'date_of_birth'">
+                  <input [formControlName]="field" type="date" [placeholder]="employeeFieldPlaceholders[field] || ''" />
+                </ng-container>
+                <ng-container *ngSwitchCase="'employment_start_date'">
+                  <input [formControlName]="field" type="date" [placeholder]="employeeFieldPlaceholders[field] || ''" />
+                </ng-container>
+                <ng-container *ngSwitchCase="'employment_end_date'">
+                  <input [formControlName]="field" type="date" [placeholder]="employeeFieldPlaceholders[field] || ''" />
+                </ng-container>
+                <ng-container *ngSwitchCase="'status'">
+                  <select [formControlName]="field">
+                    <option value="">選択してください</option>
+                    <option value="在籍中">在籍中</option>
+                    <option value="休職中">休職中</option>
+                    <option value="産休中">産休中</option>
+                    <option value="育休中">育休中</option>
+                    <option value="退職予定">退職予定</option>
+                    <option value="退職">退職</option>
+                  </select>
+                </ng-container>
+                <ng-container *ngSwitchCase="'gender'">
+                  <select [formControlName]="field">
+                    <option value="">選択してください</option>
+                    <option value="男性">男性</option>
+                    <option value="女性">女性</option>
+                  </select>
+                </ng-container>
+                <ng-container *ngSwitchCase="'employment_type'">
+                  <select [formControlName]="field">
+                    <option value="">選択してください</option>
+                    <option value="正社員">正社員</option>
+                    <option value="契約社員">契約社員</option>
+                    <option value="派遣社員">派遣社員</option>
+                    <option value="パート">パート</option>
+                    <option value="アルバイト">アルバイト</option>
+                    <option value="業務委託">業務委託</option>
+                    <option value="その他">その他</option>
+                  </select>
+                </ng-container>
+                <ng-container *ngSwitchCase="'my_number'">
+                  <div style="display: flex; align-items: center; position: relative; flex: 1;">
+                    <input *ngIf="!showMyNumber"
+                      type="text"
+                      [value]="detailForm.get(field)?.value ? detailForm.get(field)?.value.substring(0,3) + '・・・' : ''"
+                      style="flex:1; padding-right:2.2rem;" readonly />
+                    <input *ngIf="showMyNumber"
+                      [formControlName]="field"
+                      type="text"
+                      style="flex:1; padding-right:2.2rem;" />
+                    <button type="button"
+                      (click)="toggleMyNumber()"
+                      style="position: absolute; right: 0.3rem; background: none; border: none; cursor: pointer; padding: 0.2rem; display: flex; align-items: center;">
+                      <ng-container *ngIf="!showMyNumber">
+                        <!-- 目アイコン（表示） -->
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </ng-container>
+                      <ng-container *ngIf="showMyNumber">
+                        <!-- 目に斜線アイコン（非表示） -->
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1976d2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 19C5 19 1 12 1 12a21.81 21.81 0 0 1 5.06-7.94"/><path d="M22.54 12.88A21.81 21.81 0 0 0 23 12s-4-7-11-7a10.94 10.94 0 0 0-4.06.76"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                      </ng-container>
+                    </button>
+                  </div>
+                </ng-container>
+                <ng-container *ngSwitchDefault>
+                  <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" />
+                  <div class="error-message" *ngIf="(field === 'last_name_kana' || field === 'first_name_kana') && detailForm.get(field)?.errors?.['katakana'] && detailForm.get(field)?.touched">
+                    全角カタカナで入力してください
+                  </div>
+                </ng-container>
+              </ng-container>
+            </div>
+            <!-- dependents専用UI -->
+            <div *ngIf="field === 'dependents'" class="dependents-section">
+              <label>{{ employeeFieldLabels[field] || field }}</label>
+              <div class="dependents-container">
+                <div class="dependents-header">
+                  <h3>扶養者一覧</h3>
+                  <button type="button" (click)="openDependentModal()" class="add-dependent-btn">
+                    <span class="plus-icon">+</span>
+                    扶養者を追加
+                  </button>
+                </div>
+                <div class="dependents-table-container">
+                  <table class="dependents-table">
+                    <thead>
+                      <tr>
+                        <th>氏名</th>
+                        <th>続柄</th>
+                        <th>生年月日</th>
+                        <th>性別</th>
+                        <th>操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr *ngFor="let dep of dependentsArray.controls; let i = index" [formGroup]="$any(dep)" class="dependent-row">
+                        <td>{{ dep.value.name }}</td>
+                        <td>{{ dep.value.relationship }}</td>
+                        <td>{{ dep.value.birthdate }}</td>
+                        <td>{{ dep.value.gender }}</td>
+                        <td>
+                          <div class="dependent-actions">
+                            <button type="button" (click)="editDependent(i)" class="remove-dependent-btn" style="background:#42a5f5; color:#fff;">編集</button>
+                            <button type="button" (click)="removeDependent(i)" class="remove-dependent-btn"><span class="remove-icon">×</span></button>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr *ngIf="dependentsArray.length === 0">
+                        <td colspan="5" class="no-dependents-message">
+                          扶養者情報がありません。追加ボタンから登録してください。
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <!-- 扶養者追加モーダル -->
+            <div class="employee-detail-modal" *ngIf="showDependentModal">
+              <div class="employee-detail-modal-content" style="max-width:600px;">
+                <h2>扶養者情報の追加</h2>
+                <form [formGroup]="dependentForm" style="display:flex; flex-direction:column; gap:0.7rem;">
+                  <div class="detail-row">
+                    <label>氏名</label>
+                    <input formControlName="name" placeholder="例：山田 花子" class="dependent-input" />
+                  </div>
+                  <div class="detail-row">
+                    <label>続柄</label>
+                    <select formControlName="relationship" class="dependent-select">
+                      <option value="">選択してください</option>
+                      <option value="配偶者">配偶者</option>
+                      <option value="子">子</option>
+                      <option value="父母">父母</option>
+                      <option value="その他">その他</option>
+                    </select>
+                  </div>
+                  <div class="detail-row">
+                    <label>生年月日</label>
+                    <input formControlName="birthdate" type="date" class="dependent-input" />
+                  </div>
+                  <div class="detail-row">
+                    <label>性別</label>
+                    <select formControlName="gender" class="dependent-select">
+                      <option value="">選択してください</option>
+                      <option value="男性">男性</option>
+                      <option value="女性">女性</option>
+                    </select>
+                  </div>
+                  <div class="detail-row">
+                    <label>同居</label>
+                    <input type="checkbox" formControlName="cohabitation" />
+                  </div>
+                  <div class="detail-row">
+                    <label>年収</label>
+                    <input formControlName="annualIncome" type="number" min="0" class="dependent-input" placeholder="例：1200000" />
+                  </div>
+                  <div class="detail-row">
+                    <label>就業状況</label>
+                    <select formControlName="employmentStatus" class="dependent-select">
+                      <option value="">選択してください</option>
+                      <option value="無職">無職</option>
+                      <option value="パート">パート</option>
+                      <option value="学生">学生</option>
+                      <option value="会社員">会社員</option>
+                      <option value="その他">その他</option>
+                    </select>
+                  </div>
+                  <div class="detail-row">
+                    <label>扶養開始日</label>
+                    <input formControlName="fuyouStartDate" type="date" class="dependent-input" />
+                  </div>
+                  <div class="detail-row">
+                    <label>現在も扶養中</label>
+                    <input type="checkbox" formControlName="isCurrentlyDependent" />
+                  </div>
+                  <div class="detail-row">
+                    <label>備考</label>
+                    <input formControlName="note" class="dependent-input" placeholder="備考（任意）" />
+                  </div>
+                  <div class="detail-row">
+                    <label>マイナンバー</label>
+                    <input formControlName="myNumber" class="dependent-input" placeholder="マイナンバー（任意/注意）" />
+                  </div>
+                  <div style="display:flex; gap:1rem; margin-top:1rem;">
+                    <button type="button" (click)="addDependentFromModal()" [disabled]="!dependentForm.valid">追加</button>
+                    <button type="button" (click)="closeDependentModal()" style="background:#b0bec5; color:#fff;">キャンセル</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </ng-container>
+        </ng-container>
+        <button type="button" (click)="saveDetail()">保存</button>
+        <button type="button" (click)="closeDetail()" style="background:#b0bec5; color:#fff; margin-left:0.7rem;">閉じる</button>
+        <div *ngIf="detailSaveMessage" style="color:#1976d2; margin-top:0.5rem;">{{ detailSaveMessage }}</div>
+      </form>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,295 @@
+import { Component } from '@angular/core';
+import { FormBuilder, FormGroup, Validators, ReactiveFormsModule, AbstractControl, ValidationErrors, ValidatorFn } from '@angular/forms';
+import { Firestore, doc, setDoc, collection, getDocs, query, where, deleteDoc } from '@angular/fire/firestore';
+import { CommonModule } from '@angular/common';
+import { debounceTime } from 'rxjs/operators';
+import { createUserWithEmailAndPassword, Auth } from '@angular/fire/auth';
+
+// カタカナのみ許可するバリデータ
+function katakanaValidator(): ValidatorFn {
+  return (control: AbstractControl): ValidationErrors | null => {
+    const value = control.value;
+    if (!value) return null;
+    // 全角カタカナのみ許可（スペースも可）
+    return /^[\u30A0-\u30FF\u3000\s]+$/.test(value) ? null : { katakana: true };
+  };
+}
+
+@Component({
+  selector: 'app-vendor-page',
+  standalone: true,
+  imports: [CommonModule, ReactiveFormsModule],
+  templateUrl: './vendor-page.component.html',
+  styleUrl: './vendor-page.component.scss'
+})
+export class VendorPageComponent {
+  companyForm: FormGroup;
+  companyRegisterSuccess = false;
+  companyRegisterError: string | null = null;
+  newCompanyId: string | null = null;
+  companyNameExists = false;
+  branchForm: FormGroup;
+  branchRegisterSuccess = false;
+  branchRegisterError: string | null = null;
+  newDepartmentId: string | null = null;
+  companyIdExists = true;
+  deleteForm: FormGroup;
+  deleteCompanyId: string = '';
+  deleteSuccess = false;
+  deleteError: string | null = null;
+
+  constructor(private fb: FormBuilder, private firestore: Firestore, private auth: Auth) {
+    this.companyForm = this.fb.group({
+      company_name: ['', Validators.required],
+      company_name_kana: ['', [Validators.required, katakanaValidator()]],
+      postal_code: ['', Validators.required],
+      address: ['', Validators.required],
+      phone_number: ['', Validators.required],
+      email: ['', [Validators.required, Validators.email]],
+      representative_name: ['', Validators.required],
+      representative_title: [''],
+      industry: ['']
+    });
+
+    // 会社名の重複チェック（入力が変わるたびに）
+    this.companyForm.get('company_name')!.valueChanges
+      .pipe(debounceTime(400))
+      .subscribe(async (value: string) => {
+        this.companyRegisterError = null;
+        this.companyNameExists = false;
+        if (!value) return;
+        const companiesCol = collection(this.firestore, 'companies');
+        const qName = query(companiesCol, where('company_name', '==', value));
+        const nameSnapshot = await getDocs(qName);
+        if (!nameSnapshot.empty) {
+          this.companyNameExists = true;
+          this.companyRegisterError = 'すでに登録されています';
+        }
+      });
+
+    this.branchForm = this.fb.group({
+      company_id: ['', Validators.required],
+      department_id: [''],
+      department_name: ['', Validators.required],
+      location: [''],
+      office_number: [''],
+      phone_number: [''],
+      email: [''],
+      manager_name: ['']
+    });
+
+    // 会社ID存在チェック（入力が変わるたびに）
+    this.branchForm.get('company_id')!.valueChanges
+      .pipe(debounceTime(400))
+      .subscribe(async (value: string) => {
+        this.companyIdExists = true;
+        if (!value) return;
+        const companyDocRef = doc(this.firestore, `companies/${value}`);
+        const companySnap = await getDocs(query(collection(this.firestore, 'companies')));
+        const exists = companySnap.docs.some(d => d.id === value);
+        this.companyIdExists = exists;
+      });
+
+    this.deleteForm = this.fb.group({
+      company_name: ['']
+    });
+    this.deleteForm.get('company_name')!.valueChanges
+      .pipe(debounceTime(400))
+      .subscribe(async (value: string) => {
+        this.deleteSuccess = false;
+        this.deleteError = null;
+        this.deleteCompanyId = '';
+        if (!value) return;
+        // 会社名からcompany_id検索
+        const companiesCol = collection(this.firestore, 'companies');
+        const q = query(companiesCol, where('company_name', '==', value));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          this.deleteCompanyId = snapshot.docs[0].id;
+        }
+      });
+  }
+
+  async registerCompany() {
+    this.companyRegisterSuccess = false;
+    this.companyRegisterError = null;
+    this.newCompanyId = null;
+    if (this.companyForm.invalid || this.companyNameExists) {
+      this.companyRegisterError = this.companyNameExists ? 'すでに登録されています' : '必須項目をすべて入力してください。';
+      return;
+    }
+    try {
+      // 会社名の重複チェック（念のため）
+      const companiesCol = collection(this.firestore, 'companies');
+      const qName = query(companiesCol, where('company_name', '==', this.companyForm.value.company_name));
+      const nameSnapshot = await getDocs(qName);
+      if (!nameSnapshot.empty) {
+        this.companyRegisterError = 'すでに登録されています';
+        this.companyNameExists = true;
+        return;
+      }
+      // 既存会社IDの最大値を取得
+      const q = query(companiesCol);
+      const snapshot = await getDocs(q);
+      let maxId = 1000;
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        const idStr = data['company_id'];
+        const idNum = Number(idStr);
+        if (!isNaN(idNum) && idNum > maxId) {
+          maxId = idNum;
+        }
+      });
+      const newId = (maxId + 1).toString();
+      const data = {
+        company_id: newId,
+        ...this.companyForm.value,
+        created_at: new Date()
+      };
+      const companyDoc = doc(this.firestore, `companies/${newId}`);
+      await setDoc(companyDoc, data);
+      // 代表者をemployeesコレクションにも追加
+      const initialPassword = newId + '00';
+      const employeeData = {
+        company_id: newId,
+        department_id: '',
+        employee_code: newId,
+        last_name_kanji: '',
+        first_name_kanji: '',
+        last_name_kana: '',
+        first_name_kana: '',
+        date_of_birth: '',
+        gender: '',
+        nationality: '',
+        my_number: '',
+        postal_code: '',
+        address: '',
+        phone_number: this.companyForm.value.phone_number || '',
+        email: this.companyForm.value.email || '',
+        password: initialPassword,
+        role: 'admin',
+        employment_type: '',
+        employment_start_date: '',
+        employment_end_date: '',
+        status: '在籍中',
+        department: '',
+        work_category: '',
+        health_insurance_enrolled: false,
+        pension_insurance_enrolled: false,
+        health_insurance_number: '',
+        pension_number: '',
+        insurer_number: '',
+        office_number: '',
+        has_dependents: false,
+        dependents: [],
+        remarks: '',
+        created_at: new Date(),
+        updated_at: new Date()
+      };
+      const employeesCol = collection(this.firestore, 'employees');
+      await setDoc(doc(employeesCol), employeeData);
+      // Firebase Authにもサインアップ
+      try {
+        await createUserWithEmailAndPassword(this.auth, employeeData.email, initialPassword);
+      } catch (e: any) {
+        // すでに登録済みの場合などは無視（他のエラーは通知）
+        if (e.code !== 'auth/email-already-in-use') {
+          throw e;
+        }
+      }
+      // 会社登録時に本社（会社ID-00）をdepartmentsコレクションに自動追加
+      const departmentId = `${newId}-00`;
+      const departmentData = {
+        company_id: newId,
+        department_id: departmentId,
+        department_name: '本社',
+        location: '',
+        office_number: '',
+        phone_number: this.companyForm.value.phone_number || '',
+        email: this.companyForm.value.email || '',
+        manager_name: '',
+        created_at: new Date(),
+        updated_at: new Date()
+      };
+      const departmentsCol = collection(this.firestore, 'departments');
+      await setDoc(doc(departmentsCol, departmentId), departmentData);
+      this.companyRegisterSuccess = true;
+      this.newCompanyId = newId;
+      this.companyForm.reset();
+      this.companyNameExists = false;
+    } catch (e: any) {
+      this.companyRegisterError = '登録に失敗しました: ' + (e.message || e);
+    }
+  }
+
+  async addBranch() {
+    this.branchRegisterSuccess = false;
+    this.branchRegisterError = null;
+    this.newDepartmentId = null;
+    if (this.branchForm.invalid || !this.companyIdExists) {
+      this.branchRegisterError = !this.companyIdExists ? '会社IDが存在しません' : '必須項目をすべて入力してください。';
+      return;
+    }
+    try {
+      // 会社ID存在チェック（念のため）
+      const companyId = this.branchForm.value.company_id;
+      const companyDocRef = doc(this.firestore, `companies/${companyId}`);
+      const companySnap = await getDocs(query(collection(this.firestore, 'companies')));
+      const exists = companySnap.docs.some(d => d.id === companyId);
+      if (!exists) {
+        this.branchRegisterError = '会社IDが存在しません';
+        this.companyIdExists = false;
+        return;
+      }
+      // 事業所ID自動採番（company_id-XX 形式）
+      let departmentId = this.branchForm.value.department_id;
+      if (!departmentId) {
+        // 既存の同一会社IDの事業所数をカウント
+        const departmentsCol = collection(this.firestore, 'departments');
+        const q = query(departmentsCol, where('company_id', '==', companyId));
+        const snapshot = await getDocs(q);
+        const count = snapshot.size + 1;
+        departmentId = `${companyId}-${count.toString().padStart(2, '0')}`;
+      }
+      const data = {
+        ...this.branchForm.value,
+        department_id: departmentId,
+        created_at: new Date(),
+        updated_at: new Date()
+      };
+      const departmentDoc = doc(this.firestore, `departments/${departmentId}`);
+      await setDoc(departmentDoc, data);
+      this.branchRegisterSuccess = true;
+      this.newDepartmentId = departmentId;
+      this.branchForm.reset();
+    } catch (e: any) {
+      this.branchRegisterError = '登録に失敗しました: ' + (e.message || e);
+    }
+  }
+
+  async onDeleteCompany() {
+    this.deleteSuccess = false;
+    this.deleteError = null;
+    const companyId = this.deleteCompanyId;
+    if (!companyId) {
+      this.deleteError = '会社IDが見つかりません';
+      return;
+    }
+    try {
+      // companiesから削除
+      await deleteDoc(doc(this.firestore, `companies/${companyId}`));
+      // departmentsから該当company_idの全ドキュメント削除
+      const departmentsCol = collection(this.firestore, 'departments');
+      const q = query(departmentsCol, where('company_id', '==', companyId));
+      const snapshot = await getDocs(q);
+      for (const docSnap of snapshot.docs) {
+        await deleteDoc(doc(this.firestore, `departments/${docSnap.id}`));
+      }
+      this.deleteSuccess = true;
+      this.deleteForm.reset();
+      this.deleteCompanyId = '';
+    } catch (e: any) {
+      this.deleteError = '削除に失敗しました: ' + (e.message || e);
+    }
+  }
+}

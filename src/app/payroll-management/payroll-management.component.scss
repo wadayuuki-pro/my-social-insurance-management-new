@@ -1,0 +1,246 @@
+// 全体レイアウト
+.payroll-management-container {
+  max-width: 900px;
+  margin: 2rem auto;
+  padding: 2rem 1.5rem;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+}
+
+h1 {
+  color: #1976d2;
+  font-size: 1.5rem;
+  margin-bottom: 1.5rem;
+  font-weight: bold;
+  text-align: left;
+}
+
+// タブヘッダー
+.tab-header {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+
+  button {
+    flex: 1 1 0;
+    padding: 0.7rem 1.2rem;
+    background: #f5f5f5;
+    color: #1976d2;
+    border: none;
+    border-radius: 8px 8px 0 0;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+    outline: none;
+    border-bottom: 2px solid transparent;
+  }
+  button.active {
+    background: #1976d2;
+    color: #fff;
+    border-bottom: 2px solid #1976d2;
+    z-index: 2;
+  }
+  button:hover:not(.active) {
+    background: #e3f2fd;
+    color: #1256a3;
+  }
+}
+
+// タブコンテンツ
+.tab-content {
+  background: #f8fafc;
+  border-radius: 0 0 12px 12px;
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.06);
+  padding: 2rem 1.5rem 1.5rem 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.section {
+  margin-bottom: 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 1.5rem;
+}
+
+.section label {
+  min-width: 90px;
+  font-weight: 500;
+  color: #1976d2;
+}
+
+input[type="text"],
+input[type="number"],
+input[type="month"],
+select {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #b0bec5;
+  border-radius: 6px;
+  font-size: 1rem;
+  background: #fff;
+  min-width: 160px;
+}
+
+input[disabled] {
+  background: #e3eafc;
+  color: #888;
+}
+
+button {
+  padding: 0.5rem 1.2rem;
+  background: #1976d2;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.08);
+}
+button:hover {
+  background: #1256a3;
+}
+
+.dummy-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.06);
+  overflow: hidden;
+  margin-top: 0.5rem;
+}
+.dummy-table th, .dummy-table td {
+  padding: 0.8rem 0.7rem;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+  font-size: 1rem;
+}
+.dummy-table th {
+  background: #e3f2fd;
+  color: #1976d2;
+  font-weight: bold;
+}
+.dummy-table tr:last-child td {
+  border-bottom: none;
+}
+
+.alert {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffeeba;
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
+.total-row {
+  background-color: #f5f5f5;
+  font-weight: bold;
+  
+  td {
+    border-top: 2px solid #e0e0e0;
+  }
+}
+
+@media (max-width: 700px) {
+  .payroll-management-container {
+    padding: 0.5rem;
+  }
+  .tab-content {
+    padding: 1rem 0.3rem;
+  }
+  .section {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.7rem;
+  }
+  input[type="text"],
+  input[type="number"],
+  input[type="month"],
+  select {
+    min-width: 0;
+    width: 100%;
+  }
+  .dummy-table th, .dummy-table td {
+    font-size: 0.95rem;
+    padding: 0.5rem 0.3rem;
+  }
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-content {
+  background: #fff;
+  border-radius: 8px;
+  padding: 2rem;
+  min-width: 350px;
+  max-width: 95vw;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+  position: relative;
+}
+
+.table-container {
+  width: 100%;
+  margin-top: 0.5rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  display: block;
+  position: relative;
+  overflow-x: auto;
+}
+
+.payroll-table {
+  width: 100%;
+  min-width: 1100px;
+  border-collapse: separate;
+  border-spacing: 0;
+  white-space: nowrap;
+}
+
+.payroll-table th, .payroll-table td {
+  padding: 0.8rem 0.7rem;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+  font-size: 1rem;
+  background: #fff;
+  height: 32px;
+  min-height: 32px;
+  box-sizing: border-box;
+}
+
+.payroll-table th {
+  background-color: #e3f2fd;
+  color: #1976d2;
+  font-weight: bold;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  border-bottom: 2px solid #bbdefb;
+}
+
+.payroll-table th.action-column, .payroll-table td.action-column {
+  position: sticky;
+  right: 0;
+  background: #fff;
+  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+  min-width: 120px;
+  max-width: 150px;
+}
+
+.payroll-table tr:hover {
+  background-color: #f8f9fa;
+}

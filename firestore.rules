@@ -1,9 +1,9 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // 開発環境用：すべてのアクセスを許可
     match /{document=**} {
-      allow read, write: if
-        request.time < timestamp.date(2025, 5, 17);
+      allow read, write: if true;
     }
   }
 }

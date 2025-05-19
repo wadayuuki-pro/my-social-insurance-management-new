@@ -1,0 +1,112 @@
+<div class="vendor-page-container">
+  <h2>新規会社登録</h2>
+  <form class="company-form" [formGroup]="companyForm" (ngSubmit)="registerCompany()">
+    <div class="form-group">
+      <label>会社名<span class="required">*</span></label>
+      <input type="text" formControlName="company_name" placeholder="会社名" />
+    </div>
+    <div class="form-group">
+      <label>会社名（カナ）<span class="required">*</span></label>
+      <input type="text" formControlName="company_name_kana" placeholder="カイシャメイ（カナ）" />
+      <div class="error" *ngIf="companyForm.get('company_name_kana')?.invalid && companyForm.get('company_name_kana')?.touched">
+        <ng-container *ngIf="companyForm.get('company_name_kana')?.errors?.['katakana']">
+          全角カタカナで入力してください。
+        </ng-container>
+        <ng-container *ngIf="companyForm.get('company_name_kana')?.errors?.['required']">
+          会社名（カナ）は必須です。
+        </ng-container>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>郵便番号<span class="required">*</span></label>
+      <input type="text" formControlName="postal_code" placeholder="郵便番号（例: 123-4567）" />
+    </div>
+    <div class="form-group">
+      <label>所在地<span class="required">*</span></label>
+      <input type="text" formControlName="address" placeholder="所在地" />
+    </div>
+    <div class="form-group">
+      <label>代表電話番号<span class="required">*</span></label>
+      <input type="text" formControlName="phone_number" placeholder="電話番号（例: 03-1234-5678）" />
+    </div>
+    <div class="form-group">
+      <label>代表メールアドレス<span class="required">*</span></label>
+      <input type="email" formControlName="email" placeholder="メールアドレス" />
+    </div>
+    <div class="form-group">
+      <label>代表者氏名<span class="required">*</span></label>
+      <input type="text" formControlName="representative_name" placeholder="代表者氏名" />
+    </div>
+    <div class="form-group">
+      <label>代表者役職名</label>
+      <input type="text" formControlName="representative_title" placeholder="代表者役職名（任意）" />
+    </div>
+    <div class="form-group">
+      <label>業種</label>
+      <input type="text" formControlName="industry" placeholder="業種（任意）" />
+    </div>
+    <button type="submit" [disabled]="companyForm.invalid">会社登録</button>
+    <div *ngIf="companyRegisterError" class="error">{{ companyRegisterError }}</div>
+    <div *ngIf="companyRegisterSuccess" style="color: #1976d2; margin-top: 0.5rem;">
+      会社情報を登録しました（ID: {{ newCompanyId }}）
+    </div>
+  </form>
+
+  <h2>事業所追加</h2>
+  <form class="branch-add-form" [formGroup]="branchForm" (ngSubmit)="addBranch()">
+    <div class="form-group">
+      <label>会社ID <span class="required">*</span></label>
+      <input type="text" formControlName="company_id" placeholder="会社IDを入力（例: 1001）" />
+      <div class="error" *ngIf="!companyIdExists && branchForm.get('company_id')?.touched">
+        会社IDが存在しません
+      </div>
+    </div>
+    <div class="form-group">
+      <label>事業所ID（任意）</label>
+      <input type="text" formControlName="department_id" placeholder="事業所ID（自動生成可）" />
+    </div>
+    <div class="form-group">
+      <label>事業所・部署名 <span class="required">*</span></label>
+      <input type="text" formControlName="department_name" placeholder="事業所・部署名" />
+    </div>
+    <div class="form-group">
+      <label>所在地</label>
+      <input type="text" formControlName="location" placeholder="所在地（任意）" />
+    </div>
+    <div class="form-group">
+      <label>年金・健康保険届け出用事業所番号</label>
+      <input type="text" formControlName="office_number" placeholder="事業所番号（任意）" />
+    </div>
+    <div class="form-group">
+      <label>代表電話番号</label>
+      <input type="text" formControlName="phone_number" placeholder="電話番号（任意）" />
+    </div>
+    <div class="form-group">
+      <label>メールアドレス</label>
+      <input type="email" formControlName="email" placeholder="メールアドレス（任意）" />
+    </div>
+    <div class="form-group">
+      <label>所属長・責任者氏名</label>
+      <input type="text" formControlName="manager_name" placeholder="所属長・責任者氏名（任意）" />
+    </div>
+    <button type="submit" [disabled]="branchForm.invalid">事業所追加</button>
+  </form>
+  <div *ngIf="branchRegisterSuccess" style="color: #1976d2; margin-top: 0.5rem;">
+    事業所ID{{ newDepartmentId }}が作成されました
+  </div>
+
+  <h2>登録会社削除</h2>
+  <form class="company-delete-form" [formGroup]="deleteForm" (ngSubmit)="onDeleteCompany()">
+    <div class="form-group">
+      <label>会社名</label>
+      <input type="text" formControlName="company_name" placeholder="削除したい会社名を入力" />
+    </div>
+    <div class="form-group">
+      <label>会社ID</label>
+      <input type="text" [value]="deleteCompanyId" readonly placeholder="該当会社IDが表示されます" />
+    </div>
+    <button type="submit" [disabled]="!deleteCompanyId">削除確認</button>
+    <div class="error" *ngIf="deleteError">{{ deleteError }}</div>
+    <div style="color: #1976d2; margin-top: 0.5rem;" *ngIf="deleteSuccess">会社ID{{ deleteCompanyId }}のデータを削除しました</div>
+  </form>
+</div>

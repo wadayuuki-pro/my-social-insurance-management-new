@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "kensyu10085"
+  },
+  "targets": {
+    "kensyu10085": {
+      "hosting": {
+        "app1": [
+          "kensyu10085-6f451"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}
