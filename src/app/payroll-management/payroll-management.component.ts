@@ -1,8 +1,13 @@
 import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { Firestore, collection, addDoc, doc, getDocs, query, orderBy, updateDoc } from '@angular/fire/firestore';
+import { CommonModule, KeyValuePipe } from '@angular/common';
+import { Firestore, collection, addDoc, doc, getDocs, query, orderBy, updateDoc, where } from '@angular/fire/firestore';
 import { inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import * as XLSX from 'xlsx';
+import { InsurancePremiumService } from '../shared/services/insurance-premium.service';
+import { PrefecturePremiums } from '../shared/interfaces/insurance-premium.interface';
+import { InsurancePremium } from '../shared/interfaces/insurance-premium.interface';
+import { saveAs } from 'file-saver';
 
 interface SalaryDetail {
   type: string;
@@ -28,13 +33,16 @@ interface SalarySummary {
   avgPrev3: number;
   diffRate: number;
   result: string;
+  gradeLast3: number | null;
+  gradePrev3: number | null;
 }
 
 @Component({
   selector: 'app-payroll-management',
-  imports: [CommonModule, FormsModule],
   templateUrl: './payroll-management.component.html',
-  styleUrl: './payroll-management.component.scss'
+  styleUrls: ['./payroll-management.component.scss'],
+  standalone: true,
+  imports: [CommonModule, FormsModule, KeyValuePipe]
 })
 export class PayrollManagementComponent implements OnInit {
   activeTab: string = 'salary';
@@ -99,15 +107,134 @@ export class PayrollManagementComponent implements OnInit {
   editTaxableAmount: number = 0;
   editSocialInsuranceDeduction: number = 0;
 
-  async ngOnInit() {
-    // Firestoreから従業員リストを取得
+  // CSV/Excelインポート用
+  importError: string | null = null;
+  importSuccess: string | null = null;
+  isImporting: boolean = false;
+
+  selectedPrefectureId: string = '';
+  premiums: { [key: string]: InsurancePremium } | null = null;
+
+  selectedYear: string = '';
+  yearOptions: string[] = [];
+
+  selectedFile: File | null = null;
+  sheetNames: string[] = [];
+  private _selectedSheetName: string = '';
+
+  gradeLast3: number | null = null;
+  gradePrev3: number | null = null;
+
+  // 等級を数値順でソートする関数
+  sortByGrade = (a: {key: string}, b: {key: string}): number => {
+    return Number(a.key) - Number(b.key);
+  };
+
+  constructor(private insurancePremiumService: InsurancePremiumService) {}
+
+  ngOnInit(): void {
+    // 今年度と過去数年分を選択肢として用意
+    const currentYear = new Date().getFullYear();
+    this.yearOptions = [currentYear.toString(), (currentYear - 1).toString(), (currentYear - 2).toString()];
+    this.selectedYear = currentYear.toString();
+    this.loadEmployees();
+  }
+
+  async loadEmployees() {
+    // FirestoreやAPIから従業員データを取得する例
     const employeesCol = collection(this.firestore, 'employees');
-    const snapshot = await getDocs(employeesCol);
-    this.employees = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const empSnapshot = await getDocs(employeesCol);
+    this.employees = empSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     this.filteredEmployees = [...this.employees];
-    // デフォルト選択
-    if (this.employees.length > 0) {
-      this.selectedEmployeeId = this.employees[0].id;
+  }
+
+  async onTabChange(tab: string): Promise<void> {
+    this.activeTab = tab;
+    if (tab === 'insurance') {
+      await this.loadPremiums();
+    } else if (tab === 'auto-judge') {
+      await this.loadAutoJudgeSalaries();
+      this.judgeSalaryChange();
+    }
+  }
+
+  async onPrefectureChange(): Promise<void> {
+    await this.loadPremiums();
+  }
+
+  private async loadPremiums(): Promise<void> {
+    if (!this.selectedPrefectureId || !this.selectedYear) {
+      this.premiums = null;
+      return;
+    }
+    try {
+      const result = await this.insurancePremiumService.getPremiums(this.selectedPrefectureId, this.selectedYear);
+      this.premiums = result?.premiums || null;
+    } catch (error) {
+      console.error('Error loading premiums:', error);
+      this.premiums = null;
+    }
+  }
+
+  onFileInputChange(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.selectedFile = input.files && input.files.length > 0 ? input.files[0] : null;
+    this.sheetNames = [];
+    this.selectedSheetName = '';
+    if (this.selectedFile) {
+      const reader = new FileReader();
+      reader.onload = (e: any) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          this.sheetNames = workbook.SheetNames;
+          if (this.sheetNames.length > 0) {
+            this.selectedSheetName = this.sheetNames[0];
+          }
+        } catch (error) {
+          this.importError = 'シート名の取得に失敗しました。';
+        }
+      };
+      reader.readAsArrayBuffer(this.selectedFile);
+    }
+  }
+
+  async onImportClick(): Promise<void> {
+    if (!this.selectedFile || !this.selectedSheetName) return;
+    this.isImporting = true;
+    this.importError = null;
+    this.importSuccess = null;
+    try {
+      await this.insurancePremiumService.importExcelFile(this.selectedFile, this.selectedPrefectureId, this.selectedYear, this.selectedSheetName);
+      this.importSuccess = '保険料表のインポートが完了しました。';
+      await this.loadPremiums();
+    } catch (error) {
+      console.error('Import error:', error);
+      this.importError = error instanceof Error ? error.message : 'インポート中にエラーが発生しました。';
+    } finally {
+      this.isImporting = false;
+      this.selectedFile = null;
+      this.sheetNames = [];
+      this.selectedSheetName = '';
+      const input = document.getElementById('excelFile') as HTMLInputElement;
+      if (input) input.value = '';
+    }
+  }
+
+  async exportToExcel(): Promise<void> {
+    if (!this.selectedPrefectureId) {
+      this.importError = '都道府県を選択してください。';
+      return;
+    }
+    if (!this.selectedYear) {
+      this.importError = '年度を選択してください。';
+      return;
+    }
+    try {
+      await this.insurancePremiumService.exportToExcel(this.selectedPrefectureId, this.selectedYear);
+    } catch (error) {
+      console.error('Export error:', error);
+      this.importError = error instanceof Error ? error.message : 'エクスポート中にエラーが発生しました。';
     }
   }
 
@@ -333,15 +460,6 @@ export class PayrollManagementComponent implements OnInit {
     await this.loadRegisteredSalaries();
   }
 
-  // タブ切り替え時の処理
-  async onTabChange(tab: string) {
-    this.activeTab = tab;
-    if (tab === 'auto-judge') {
-      await this.loadAutoJudgeSalaries();
-      this.judgeSalaryChange();
-    }
-  }
-
   // 直近12ヶ月分の給与データ取得
   async loadAutoJudgeSalaries() {
     if (!this.selectedEmployeeId) return;
@@ -357,13 +475,15 @@ export class PayrollManagementComponent implements OnInit {
   }
 
   // 報酬月額変更自動判定ロジック
-  judgeSalaryChange() {
+  async judgeSalaryChange() {
     this.autoJudgeAlert = '';
     this.judgePeriodLast3 = '';
     this.judgePeriodPrev3 = '';
     this.avgLast3 = 0;
     this.avgPrev3 = 0;
     this.diffRate = 0;
+    this.gradeLast3 = null;
+    this.gradePrev3 = null;
     if (this.autoJudgeSalaries.length < 6) return;
     // 直近3ヶ月とその前3ヶ月の平均
     const last3 = this.autoJudgeSalaries.slice(-3);
@@ -371,13 +491,36 @@ export class PayrollManagementComponent implements OnInit {
     const avg = (arr: RegisteredSalary[]) => arr.reduce((sum, s) => sum + (s.total_amount || 0), 0) / arr.length;
     this.avgLast3 = avg(last3);
     this.avgPrev3 = avg(prev3);
-    this.diffRate = this.avgPrev3 ? (this.avgLast3 - this.avgPrev3) / this.avgPrev3 : 0;
     // 期間表示
     this.judgePeriodLast3 = `${last3[0].year_month} ～ ${last3[2].year_month}`;
     this.judgePeriodPrev3 = `${prev3[0].year_month} ～ ${prev3[2].year_month}`;
-    // 仮：8%以上の増減で2等級変動とみなす
-    if (Math.abs(this.diffRate) >= 0.08) {
-      this.autoJudgeAlert = '2等級以上の変動が検出されました。標準報酬月額の変更届が必要です。';
+
+    // 2025年の等級表（全国共通）を取得
+    const grades: { [key: string]: any } = {};
+    const gradesCol = collection(this.firestore, 'prefectures', '全国', 'insurance_premiums', '2025', 'grades');
+    const gradesSnapshot = await getDocs(gradesCol);
+    gradesSnapshot.forEach(doc => {
+      grades[doc.id] = doc.data();
+    });
+    // 平均報酬月額から等級を判定
+    function getGradeIdBySalary(grades: { [key: string]: any }, salary: number): number | null {
+      for (const [gradeId, grade] of Object.entries(grades)) {
+        if (salary >= grade.salaryMin && salary < grade.salaryMax) {
+          return Number(gradeId);
+        }
+      }
+      return null;
+    }
+    const gradeLast3 = getGradeIdBySalary(grades, this.avgLast3);
+    const gradePrev3 = getGradeIdBySalary(grades, this.avgPrev3);
+    this.gradeLast3 = gradeLast3;
+    this.gradePrev3 = gradePrev3;
+    // 等級差で判定
+    if (gradeLast3 !== null && gradePrev3 !== null) {
+      const diff = Math.abs(gradeLast3 - gradePrev3);
+      if (diff >= 2) {
+        this.autoJudgeAlert = '2等級以上の変動が検出されました。標準報酬月額の変更届が必要です。';
+      }
     }
   }
 
@@ -389,6 +532,21 @@ export class PayrollManagementComponent implements OnInit {
     const employeesCol = collection(this.firestore, 'employees');
     const empSnapshot = await getDocs(employeesCol);
     const employees = empSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // 全国共通等級表（2025年）を取得
+    const grades: { [key: string]: any } = {};
+    const gradesCol = collection(this.firestore, 'prefectures', '全国', 'insurance_premiums', '2025', 'grades');
+    const gradesSnapshot = await getDocs(gradesCol);
+    gradesSnapshot.forEach(doc => {
+      grades[doc.id] = doc.data();
+    });
+    function getGradeIdBySalary(grades: { [key: string]: any }, salary: number): number | null {
+      for (const [gradeId, grade] of Object.entries(grades)) {
+        if (salary >= grade.salaryMin && salary < grade.salaryMax) {
+          return Number(gradeId);
+        }
+      }
+      return null;
+    }
     // 各従業員ごとにsalaries取得
     for (const empRaw of employees) {
       const emp = empRaw as any;
@@ -408,8 +566,10 @@ export class PayrollManagementComponent implements OnInit {
       const avgLast3 = avg(last3);
       const avgPrev3 = avg(prev3);
       const diffRate = avgPrev3 ? (avgLast3 - avgPrev3) / avgPrev3 : 0;
+      const gradeLast3 = getGradeIdBySalary(grades, avgLast3);
+      const gradePrev3 = getGradeIdBySalary(grades, avgPrev3);
       let result = '';
-      if (Math.abs(diffRate) >= 0.08) {
+      if (gradeLast3 !== null && gradePrev3 !== null && Math.abs(gradeLast3 - gradePrev3) >= 2) {
         result = '2等級以上変動';
       } else {
         result = '変動なし';
@@ -420,9 +580,52 @@ export class PayrollManagementComponent implements OnInit {
         avgLast3,
         avgPrev3,
         diffRate,
-        result
+        result,
+        gradeLast3,
+        gradePrev3
       });
     }
     this.isSummaryLoading = false;
+  }
+
+  set selectedSheetName(value: string) {
+    this._selectedSheetName = value;
+    this.selectedPrefectureId = value;
+  }
+  get selectedSheetName(): string {
+    return this._selectedSheetName;
+  }
+
+  async exportSalariesToCSV(): Promise<void> {
+    const employeesCol = collection(this.firestore, 'employees');
+    const empSnapshot = await getDocs(employeesCol);
+    const employees = empSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const allRows: any[] = [];
+    for (const empRaw of employees) {
+      const emp = empRaw as any;
+      const salariesCol = collection(this.firestore, 'employees', emp.id, 'salaries');
+      const salSnapshot = await getDocs(salariesCol);
+      for (const docSnap of salSnapshot.docs) {
+        const data = docSnap.data();
+        allRows.push({
+          employeeId: emp.id,
+          year_month: data['year_month'],
+          details: JSON.stringify(data['details']),
+          total_amount: data['total_amount'],
+          taxable_amount: data['taxable_amount'],
+          social_insurance_deduction: data['social_insurance_deduction'],
+          created_at: data['created_at']?.toDate ? data['created_at'].toDate().toISOString() : '',
+          updated_at: data['updated_at']?.toDate ? data['updated_at'].toDate().toISOString() : ''
+        });
+      }
+    }
+    // CSV生成
+    const header = ['employeeId','year_month','details','total_amount','taxable_amount','social_insurance_deduction','created_at','updated_at'];
+    const csv = [header.join(',')].concat(
+      allRows.map(row => header.map(h => '"' + String(row[h]).replace(/"/g, '""') + '"').join(','))
+    ).join('\r\n');
+    // ダウンロード
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    saveAs(blob, 'salaries_export.csv');
   }
 }

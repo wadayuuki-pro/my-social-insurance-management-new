@@ -4,7 +4,8 @@
     <button [class.active]="activeTab === 'salary'" (click)="onTabChange('salary')">💼 月額給与・手当・賞与管理</button>
     <button [class.active]="activeTab === 'auto-judge'" (click)="onTabChange('auto-judge')">🔄 報酬月額変更自動判定</button>
     <button [class.active]="activeTab === 'history'" (click)="onTabChange('history')">📜 給与情報履歴管理</button>
-    <button [class.active]="activeTab === 'csv'" (click)="onTabChange('csv')">📥 CSVインポート／エクスポート</button>
+    <button [class.active]="activeTab === 'insurance'" (click)="onTabChange('insurance')">🏥 保険料表管理</button>
+    <button [class.active]="activeTab === 'csv'" (click)="onTabChange('csv')">📥 CSVファイルインポート/エクスポート</button>
   </div>
 
   <!-- 月額給与・手当・賞与管理 -->
@@ -145,15 +146,19 @@
                 <th>直近3ヶ月平均</th>
                 <th>前3ヶ月平均</th>
                 <th>増減率</th>
+                <th>直近3ヶ月等級</th>
+                <th>前3ヶ月等級</th>
                 <th>判定結果</th>
               </tr>
             </thead>
             <tbody>
               <tr *ngFor="let s of salarySummaries">
                 <td>{{ s.name }}</td>
-                <td>{{ s.avgLast3 | number }}円</td>
-                <td>{{ s.avgPrev3 | number }}円</td>
+                <td>{{ s.avgLast3 | number:'1.0-0' }}円</td>
+                <td>{{ s.avgPrev3 | number:'1.0-0' }}円</td>
                 <td>{{ s.diffRate | percent:'1.1-2' }}</td>
+                <td>{{ s.gradeLast3 !== null ? s.gradeLast3 : '-' }}</td>
+                <td>{{ s.gradePrev3 !== null ? s.gradePrev3 : '-' }}</td>
                 <td>{{ s.result }}</td>
               </tr>
             </tbody>
@@ -182,16 +187,109 @@
     </div>
   </div>
 
-  <!-- CSVインポート／エクスポート -->
+  <!-- 保険料表管理 -->
+  <div *ngIf="activeTab === 'insurance'" class="tab-content">
+    <h2>保険料表管理</h2>
+    
+    <!-- Excelファイルインポート -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <h5 class="mb-0">保険料表インポート</h5>
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label for="importYear" class="form-label">年度</label>
+          <select id="importYear" class="form-select" [(ngModel)]="selectedYear">
+            <option *ngFor="let y of yearOptions" [value]="y">{{ y }}年度</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="excelFile" class="form-label">協会けんぽExcelファイル</label>
+          <input type="file" class="form-control" id="excelFile" accept=".xlsx,.xls" (change)="onFileInputChange($event)" [disabled]="isImporting">
+        </div>
+        <div class="mb-3" *ngIf="sheetNames.length > 0">
+          <label for="sheetSelect" class="form-label">シート選択（都道府県）</label>
+          <select id="sheetSelect" class="form-select" [(ngModel)]="selectedSheetName">
+            <option *ngFor="let name of sheetNames" [value]="name">{{ name }}</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <button class="btn btn-primary" (click)="onImportClick()" [disabled]="!selectedFile || !selectedSheetName || isImporting">インポート</button>
+        </div>
+        <div *ngIf="importError" class="alert alert-danger">
+          {{ importError }}
+        </div>
+        <div *ngIf="isImporting" class="alert alert-info">
+          インポート中...
+        </div>
+      </div>
+    </div>
+
+    <!-- 保険料表エクスポート -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <h5 class="mb-0">保険料表エクスポート</h5>
+      </div>
+      <div class="card-body">
+        <button class="btn btn-primary" (click)="exportToExcel()" [disabled]="!selectedPrefectureId">
+          エクスポート
+        </button>
+      </div>
+    </div>
+
+    <!-- 保険料表表示 -->
+    <div class="card" *ngIf="premiums">
+      <div class="card-header">
+        <h5 class="mb-0">保険料表</h5>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="premium-table" *ngIf="premiums">
+            <thead>
+              <tr>
+                <th>等級</th>
+                <th>標準報酬月額</th>
+                <th>報酬月額下限</th>
+                <th>報酬月額上限</th>
+                <th>一般保険料（全額）</th>
+                <th>一般保険料（折半額）</th>
+                <th>特定保険料（全額）</th>
+                <th>特定保険料（折半額）</th>
+                <th>基本保険料（全額）</th>
+                <th>基本保険料（折半額）</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let grade of premiums | keyvalue : sortByGrade">
+                <td>{{ grade.key }}</td>
+                <td>{{ grade.value.standardSalary | number }}</td>
+                <td>{{ grade.value.salaryMin | number }}</td>
+                <td>{{ grade.value.salaryMax | number }}</td>
+                <td>{{ grade.value.ippan.full | number }}</td>
+                <td>{{ grade.value.ippan.half | number }}</td>
+                <td>{{ grade.value.tokutei.full | number }}</td>
+                <td>{{ grade.value.tokutei.half | number }}</td>
+                <td>{{ grade.value.kihon.full | number }}</td>
+                <td>{{ grade.value.kihon.half | number }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CSVファイルインポート/エクスポート -->
   <div *ngIf="activeTab === 'csv'" class="tab-content">
-    <h2>CSVインポート／エクスポート</h2>
+    <h2>CSVファイルインポート/エクスポート</h2>
     <div class="section">
-      <input type="file" />
-      <button>インポート</button>
-      <button>エクスポート</button>
+      <label for="csvFile">CSVファイルを選択</label>
+      <input type="file" id="csvFile" accept=".csv">
+      <button class="btn btn-primary" style="margin-left:1em;" (click)="exportSalariesToCSV()">インポート</button>
+      <button class="btn btn-secondary" style="margin-left:1em;" (click)="exportSalariesToCSV()">エクスポート</button>
     </div>
     <div class="section">
-      <div class="alert">インポート時のエラーや詳細レポートがここに表示されます。</div>
+      <p>※この機能はサンプルUIです。実際のインポート/エクスポート処理は別途実装が必要です。</p>
     </div>
   </div>
 
