@@ -12,12 +12,23 @@
     <a routerLink="/vendor-page" class="dashboard-card vendor">ベンダー専用ページ</a>
   </div>
   <div class="dashboard-user-info" style="position: absolute; top: 1.2rem; right: 2.5rem; background: #e3f2fd; color: #1976d2; border-radius: 8px; padding: 0.7rem 1.2rem; font-size: 1rem; font-weight: 500; box-shadow: 0 2px 8px rgba(25, 118, 210, 0.08);">
-    <ng-container *ngIf="companyId && employeeId; else noUser">
-      <span>会社ID: {{ companyId }}</span>
-      <span style="margin-left: 1.2em;">社員ID: {{ employeeId }}</span>
+    <ng-container *ngIf="isAuthReady$ | async as isReady">
+      <ng-container *ngIf="isReady; else loading">
+        <ng-container *ngIf="employeeInfo$ | async as info; else notLoggedIn">
+          <span *ngIf="info; else notLoggedIn">
+            ログイン中：会社ID:{{ info.company_id }}／社員ID:{{ info.employee_code }}／氏名:{{ info.name }}
+          </span>
+        </ng-container>
+        <ng-template #notLoggedIn>
+          <ng-container *ngIf="user$ | async as user">
+            <span *ngIf="user?.email">ログイン中：{{ user.email }}</span>
+            <span *ngIf="!user?.email">ログイン情報が取得できません</span>
+          </ng-container>
+        </ng-template>
+      </ng-container>
+      <ng-template #loading>
+        <span>認証確認中...</span>
+      </ng-template>
     </ng-container>
-    <ng-template #noUser>
-      <span>ログイン情報が取得できません</span>
-    </ng-template>
   </div>
 </div>

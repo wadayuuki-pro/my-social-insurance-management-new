@@ -11,78 +11,67 @@
   <!-- 月額給与・手当・賞与管理 -->
   <div *ngIf="activeTab === 'salary'" class="tab-content">
     <h2>月額給与・手当・賞与管理</h2>
-    <form class="salary-form" (ngSubmit)="registerSalary($event)">
-      <div class="section">
-        <label>従業員選択</label>
-        <input type="text" 
-               placeholder="氏名・IDで検索" 
-               style="min-width:180px;" 
-               [(ngModel)]="searchText"
-               (ngModelChange)="filterEmployees()"
-               name="employeeSearch" />
-        <select style="min-width:180px;" 
-                [(ngModel)]="selectedEmployeeId" 
-                (ngModelChange)="onEmployeeSelect()"
-                name="employeeSelect">
-          <option *ngFor="let emp of filteredEmployees" [value]="emp.id">
-            {{ emp.last_name_kanji }} {{ emp.first_name_kanji }}（ID: {{ emp.employee_code || emp.id }}）
-          </option>
-        </select>
+    <div class="salary-form">
+      <h3>給与明細登録</h3>
+      <div class="form-group">
+        <label for="employeeSearch">従業員検索（氏名・ID）</label>
+        <input type="text" id="employeeSearch" placeholder="氏名・IDで検索" [(ngModel)]="searchText" (ngModelChange)="filterEmployees()" name="employeeSearch" />
       </div>
-      <div class="section">
-        <label>支給年月</label>
-        <input type="month" />
-      </div>
-      <div class="section">
-        <label>明細入力</label>
-        <table class="dummy-table">
-          <thead>
-            <tr><th>区分</th><th>金額</th><th>備考</th><th>操作</th></tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let detail of salaryDetails; let i = index">
-              <td>
-                <select [(ngModel)]="detail.type" (ngModelChange)="onDetailChange()" [name]="'type' + i">
-                  <option *ngFor="let type of salaryTypes" [value]="type.value">
-                    {{type.label}}
-                  </option>
-                </select>
-              </td>
-              <td>
-                <input type="number" 
-                       [(ngModel)]="detail.amount" 
-                       (ngModelChange)="onDetailChange()"
-                       [name]="'amount' + i"
-                       placeholder="金額" />
-              </td>
-              <td>
-                <input type="text" 
-                       [(ngModel)]="detail.note"
-                       [name]="'note' + i"
-                       placeholder="備考" />
-              </td>
-              <td>
-                <button type="button" (click)="removeSalaryDetail(i)">－</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <button type="button" (click)="addSalaryDetail()" style="margin-top: 1rem;">＋ 明細を追加</button>
-      </div>
-      <div class="section">
-        <label>総支給額</label>
-        <input type="number" [value]="totalAmount" disabled />
-        <label>課税対象額</label>
-        <input type="number" [value]="taxableAmount" disabled />
-        <label>社会保険料控除額</label>
-        <input type="number" [value]="socialInsuranceDeduction" disabled />
-      </div>
-      <div class="section">
-        <button type="submit">登録</button>
-        <button type="button" (click)="clearForm()">クリア</button>
-      </div>
-      <div class="alert" style="display:none;">エラーやアラートがここに表示されます。</div>
-    </form>
+      <form (ngSubmit)="registerSalary($event)">
+        <div class="form-group">
+          <label for="employee">従業員</label>
+          <select id="employee" [(ngModel)]="selectedEmployeeId" name="employee" (change)="onEmployeeSelect()" required>
+            <option value="">選択してください</option>
+            <option *ngFor="let emp of filteredEmployees" [value]="emp.id">
+              {{emp.last_name_kanji}} {{emp.first_name_kanji}} ({{emp.employee_code}})
+            </option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="yearMonth">対象年月</label>
+          <input type="month" id="yearMonth" name="yearMonth" required>
+        </div>
+
+        <div class="salary-details">
+          <h4>明細</h4>
+          <div class="detail-actions">
+            <button type="button" (click)="addSalaryDetail()">明細追加</button>
+            <button type="button" (click)="openCustomAllowanceModal()">手当区分管理</button>
+          </div>
+          <div class="detail-list">
+            <div class="detail-item" *ngFor="let detail of salaryDetails; let i = index">
+              <select [(ngModel)]="detail.type" name="type{{i}}" (change)="onDetailChange()">
+                <option *ngFor="let type of salaryTypes" [value]="type.value">{{type.label}}</option>
+              </select>
+              <input type="number" [(ngModel)]="detail.amount" name="amount{{i}}" (input)="onDetailChange()" placeholder="金額">
+              <input type="text" [(ngModel)]="detail.note" name="note{{i}}" placeholder="備考">
+              <button type="button" (click)="removeSalaryDetail(i)">削除</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="totals">
+          <div class="total-item">
+            <span>総支給額:</span>
+            <span>{{formatAmount(totalAmount)}}円</span>
+          </div>
+          <div class="total-item">
+            <span>課税対象額:</span>
+            <span>{{formatAmount(taxableAmount)}}円</span>
+          </div>
+          <div class="total-item">
+            <span>社会保険料控除額:</span>
+            <span>{{formatAmount(socialInsuranceDeduction)}}円</span>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit">登録</button>
+          <button type="button" (click)="clearForm()">クリア</button>
+        </div>
+      </form>
+    </div>
     <div class="section">
       <h3>登録済み給与明細一覧</h3>
       <div class="table-container">
@@ -173,17 +162,32 @@
   <div *ngIf="activeTab === 'history'" class="tab-content">
     <h2>給与情報履歴管理</h2>
     <div class="section">
-      <input type="text" placeholder="従業員名・IDで検索" />
-      <button>検索</button>
-    </div>
-    <div class="section">
-      <table class="dummy-table">
-        <thead><tr><th>従業員</th><th>変更内容</th><th>理由</th><th>日時</th></tr></thead>
+      <div *ngIf="isHistoryLoading" style="margin:1em 0; color:#888;">履歴を取得中...</div>
+      <table class="dummy-table" *ngIf="!isHistoryLoading && salaryHistories.length > 0">
+        <thead>
+          <tr>
+            <th>社員ID</th>
+            <th>氏名</th>
+            <th>対象年月</th>
+            <th>操作</th>
+            <th>操作日時</th>
+            <th>操作ユーザー</th>
+            <th>変更内容</th>
+          </tr>
+        </thead>
         <tbody>
-          <tr><td>従業員A</td><td>基本給変更</td><td>昇給</td><td>2024/03/01</td></tr>
-          <tr><td>従業員B</td><td>賞与追加</td><td>業績反映</td><td>2024/02/15</td></tr>
+          <tr *ngFor="let h of salaryHistories">
+            <td>{{ h.employee_id }}</td>
+            <td>{{ h.employee_name }}</td>
+            <td>{{ h.year_month }}</td>
+            <td>{{ h.operation === 'create' ? '新規作成' : '更新' }}</td>
+            <td>{{ h.operated_at | date:'yyyy/MM/dd HH:mm' }}</td>
+            <td>{{ h.operator }}</td>
+            <td>{{ h.changeMessage }}</td>
+          </tr>
         </tbody>
       </table>
+      <div *ngIf="!isHistoryLoading && salaryHistories.length === 0" style="margin:1em 0; color:#888;">履歴がありません。</div>
     </div>
   </div>
 
@@ -284,12 +288,15 @@
     <h2>CSVファイルインポート/エクスポート</h2>
     <div class="section">
       <label for="csvFile">CSVファイルを選択</label>
-      <input type="file" id="csvFile" accept=".csv">
-      <button class="btn btn-primary" style="margin-left:1em;" (click)="exportSalariesToCSV()">インポート</button>
+      <input type="file" id="csvFile" accept=".csv,.xlsx" (change)="onCSVFileChange($event)">
+      <button class="btn btn-primary" style="margin-left:1em;" (click)="importSalariesFromCSV()" [disabled]="!selectedCSVFile">インポート</button>
       <button class="btn btn-secondary" style="margin-left:1em;" (click)="exportSalariesToCSV()">エクスポート</button>
     </div>
     <div class="section">
-      <p>※この機能はサンプルUIです。実際のインポート/エクスポート処理は別途実装が必要です。</p>
+      <p>※この機能はCSVファイルのインポート・エクスポートを行います。</p>
+      <div *ngIf="csvImportMessage" [ngClass]="{'success-message': csvImportSuccess, 'error-message': !csvImportSuccess}">
+        {{ csvImportMessage }}
+      </div>
     </div>
   </div>
 
@@ -342,6 +349,46 @@
           <button type="button" (click)="closeEditModal()">キャンセル</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- カスタム手当管理モーダル -->
+  <div class="modal" *ngIf="showCustomAllowanceModal">
+    <div class="modal-content">
+      <h3>{{editingAllowanceId ? '手当区分の編集' : '手当区分の追加'}}</h3>
+      <form [formGroup]="customAllowanceForm" (ngSubmit)="saveCustomAllowance()">
+        <div class="form-group">
+          <label for="allowanceLabel">表示名</label>
+          <input type="text" id="allowanceLabel" formControlName="label" placeholder="例: 特別手当">
+          <div class="error" *ngIf="customAllowanceForm.get('label')?.errors?.['required'] && customAllowanceForm.get('label')?.touched">
+            表示名を入力してください
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" [disabled]="customAllowanceForm.invalid">保存</button>
+          <button type="button" (click)="closeCustomAllowanceModal()">キャンセル</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- カスタム手当一覧モーダル -->
+  <div class="modal" *ngIf="showCustomAllowanceListModal">
+    <div class="modal-content">
+      <h3>手当区分一覧</h3>
+      <div class="allowance-list">
+        <div class="allowance-item" *ngFor="let allowance of customAllowances">
+          <span>{{allowance.label}}</span>
+          <div class="allowance-actions">
+            <button type="button" (click)="openCustomAllowanceModal(allowance)">編集</button>
+            <button type="button" (click)="deleteCustomAllowance(allowance)">削除</button>
+          </div>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="button" (click)="openCustomAllowanceModal()">新規追加</button>
+        <button type="button" (click)="closeCustomAllowanceListModal()">閉じる</button>
+      </div>
     </div>
   </div>
 </div>

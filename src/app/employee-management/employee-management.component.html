@@ -253,6 +253,28 @@
                   <option value="その他">その他</option>
                 </select>
               </ng-container>
+              <ng-container *ngIf="newEmployeeForm.get('employment_type')?.value === 'パート' || newEmployeeForm.get('employment_type')?.value === 'アルバイト'">
+                <div class="detail-row">
+                  <label>所定労働時間</label>
+                  <input formControlName="scheduled_working_hours" placeholder="例：80時間/月" />
+                </div>
+                <div class="detail-row">
+                  <label>雇用契約期間</label>
+                  <input formControlName="employment_contract_period" placeholder="例：2024/04/01～2025/03/31" />
+                </div>
+                <div class="detail-row">
+                  <label>月収見込み</label>
+                  <input formControlName="expected_monthly_income" type="number" placeholder="例：100000" />
+                </div>
+                <div class="detail-row">
+                  <label>学生区分</label>
+                  <select formControlName="student_category">
+                    <option value="学生ではない">学生ではない</option>
+                    <option value="昼間学生">昼間学生</option>
+                    <option value="昼間学生ではない">昼間学生ではない</option>
+                  </select>
+                </div>
+              </ng-container>
               <ng-container *ngSwitchDefault>
                 <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" />
                 <div class="error-message" *ngIf="(field === 'last_name_kana' || field === 'first_name_kana') && newEmployeeForm.get(field)?.errors?.['katakana'] && newEmployeeForm.get(field)?.touched">
@@ -395,28 +417,26 @@
                     <option value="その他">その他</option>
                   </select>
                 </ng-container>
-                <ng-container *ngSwitchCase="'my_number'">
-                  <div style="display: flex; align-items: center; position: relative; flex: 1;">
-                    <input *ngIf="!showMyNumber"
-                      type="text"
-                      [value]="detailForm.get(field)?.value ? detailForm.get(field)?.value.substring(0,3) + '・・・' : ''"
-                      style="flex:1; padding-right:2.2rem;" readonly />
-                    <input *ngIf="showMyNumber"
-                      [formControlName]="field"
-                      type="text"
-                      style="flex:1; padding-right:2.2rem;" />
-                    <button type="button"
-                      (click)="toggleMyNumber()"
-                      style="position: absolute; right: 0.3rem; background: none; border: none; cursor: pointer; padding: 0.2rem; display: flex; align-items: center;">
-                      <ng-container *ngIf="!showMyNumber">
-                        <!-- 目アイコン（表示） -->
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
-                      </ng-container>
-                      <ng-container *ngIf="showMyNumber">
-                        <!-- 目に斜線アイコン（非表示） -->
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1976d2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 19C5 19 1 12 1 12a21.81 21.81 0 0 1 5.06-7.94"/><path d="M22.54 12.88A21.81 21.81 0 0 0 23 12s-4-7-11-7a10.94 10.94 0 0 0-4.06.76"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                      </ng-container>
-                    </button>
+                <ng-container *ngIf="detailForm.get('employment_type')?.value === 'パート' || detailForm.get('employment_type')?.value === 'アルバイト'">
+                  <div class="detail-row">
+                    <label>所定労働時間</label>
+                    <input formControlName="scheduled_working_hours" placeholder="例：80時間/月" />
+                  </div>
+                  <div class="detail-row">
+                    <label>雇用契約期間</label>
+                    <input formControlName="employment_contract_period" placeholder="例：2024/04/01～2025/03/31" />
+                  </div>
+                  <div class="detail-row">
+                    <label>月収見込み</label>
+                    <input formControlName="expected_monthly_income" type="number" placeholder="例：100000" />
+                  </div>
+                  <div class="detail-row">
+                    <label>学生区分</label>
+                    <select formControlName="student_category">
+                      <option value="学生ではない">学生ではない</option>
+                      <option value="昼間学生">昼間学生</option>
+                      <option value="昼間学生ではない">昼間学生ではない</option>
+                    </select>
                   </div>
                 </ng-container>
                 <ng-container *ngSwitchDefault>

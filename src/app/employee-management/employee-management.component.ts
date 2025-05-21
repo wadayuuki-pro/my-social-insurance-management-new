@@ -1,6 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Auth } from '@angular/fire/auth';
+import { Auth, createUserWithEmailAndPassword } from '@angular/fire/auth';
 import { Firestore, collection, query, where, getDocs, doc, updateDoc, addDoc } from '@angular/fire/firestore';
 import { FormBuilder, FormGroup, ReactiveFormsModule, FormArray, Validators, AbstractControl, ValidatorFn } from '@angular/forms';
 import { AddMemberButtonComponent } from '../shared/components/add-member-button/add-member-button.component';
@@ -197,7 +197,11 @@ export class EmployeeManagementComponent implements OnInit {
       role: [''],
       password: [''],
       remarks: [''],
-      dependents: this.fb.array([])
+      dependents: this.fb.array([]),
+      scheduled_working_hours: [''],
+      employment_contract_period: [''],
+      expected_monthly_income: [''],
+      student_category: ['学生ではない']
     });
     // 扶養者追加用フォーム初期化
     this.dependentForm = this.fb.group({
@@ -665,13 +669,9 @@ export class EmployeeManagementComponent implements OnInit {
   }
 
   // ランダムなパスワードを生成する関数
-  private generateRandomPassword(length: number = 12): string {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-    let password = '';
-    for (let i = 0; i < length; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return password;
+  private generateRandomPassword(employeeCode?: string): string {
+    // 社員ID＋00 形式
+    return (employeeCode || '') + '00';
   }
 
   async saveNewEmployee() {
@@ -689,51 +689,39 @@ export class EmployeeManagementComponent implements OnInit {
     try {
       // 所属会社IDを有効化して値を取得
       this.newEmployeeForm.get('company_id')?.enable();
-      
       // フォームの値を取得
       const formValue = this.newEmployeeForm.value;
-      
       // パスワードを自動生成
-      const generatedPassword = this.generateRandomPassword();
-      
-      // 新規メンバーデータの作成
+      const generatedPassword = this.generateRandomPassword(formValue.employee_code);
+
+      // 1. Firebase Authにユーザー登録
+      await createUserWithEmailAndPassword(this.auth, formValue.email, generatedPassword);
+
+      // 2. Firestoreに従業員情報を保存
       const newEmployeeData = {
         ...formValue,
-        // パスワードを設定
         password: generatedPassword,
-        // 保険関連の初期値設定
         health_insurance_enrolled: formValue.health_insurance_number ? true : false,
         pension_insurance_enrolled: formValue.pension_number ? true : false,
         health_insurance_number: formValue.health_insurance_number || '',
         pension_number: formValue.pension_number || '',
         insurer_number: formValue.insurer_number || '',
         office_number: formValue.office_number || '',
-        // 扶養者情報の設定
         has_dependents: this.newEmployeeDependentsArray.length > 0,
         dependents: this.newEmployeeDependentsArray.value,
-        // タイムスタンプの設定
         created_at: new Date(),
         updated_at: new Date(),
-        // ステータスの設定（未設定の場合は「在籍中」）
         status: formValue.status || '在籍中'
       };
-
-      // 所属会社IDを再度編集不可に設定
       this.newEmployeeForm.get('company_id')?.disable();
-
-      // Firestoreに保存
       const employeesCol = collection(this.firestore, 'employees');
       await addDoc(employeesCol, newEmployeeData);
-      
-      // 成功メッセージを表示（パスワードを含む）
+
       alert(`新規メンバーを追加しました。\n初期パスワード: ${generatedPassword}\n\n※このパスワードはこの画面でのみ表示されます。`);
-      
-      // モーダルを閉じて一覧を更新
       this.showNewEmployeeModal = false;
       await this.loadEmployees();
-    } catch (error) {
-      console.error('Error adding new employee:', error);
-      alert('新規メンバーの追加に失敗しました。もう一度お試しください。');
+    } catch (error: any) {
+      alert('新規メンバーの追加に失敗しました: ' + (error.message || error));
     }
   }
 

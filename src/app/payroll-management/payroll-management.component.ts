@@ -1,18 +1,30 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule, KeyValuePipe } from '@angular/common';
-import { Firestore, collection, addDoc, doc, getDocs, query, orderBy, updateDoc, where } from '@angular/fire/firestore';
+import { Firestore, collection, addDoc, doc, getDocs, query, orderBy, updateDoc, where, deleteDoc } from '@angular/fire/firestore';
 import { inject } from '@angular/core';
-import { FormsModule } from '@angular/forms';
+import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import * as XLSX from 'xlsx';
 import { InsurancePremiumService } from '../shared/services/insurance-premium.service';
 import { PrefecturePremiums } from '../shared/interfaces/insurance-premium.interface';
 import { InsurancePremium } from '../shared/interfaces/insurance-premium.interface';
 import { saveAs } from 'file-saver';
+import { Auth } from '@angular/fire/auth';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { AuthService } from '../shared/services/auth.service';
 
 interface SalaryDetail {
   type: string;
   amount: number;
   note: string;
+}
+
+interface CustomAllowance {
+  id: string;
+  company_id: string;
+  value: string;
+  label: string;
+  created_at: Date;
+  updated_at: Date;
 }
 
 interface RegisteredSalary {
@@ -42,7 +54,7 @@ interface SalarySummary {
   templateUrl: './payroll-management.component.html',
   styleUrls: ['./payroll-management.component.scss'],
   standalone: true,
-  imports: [CommonModule, FormsModule, KeyValuePipe]
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, KeyValuePipe]
 })
 export class PayrollManagementComponent implements OnInit {
   activeTab: string = 'salary';
@@ -57,16 +69,26 @@ export class PayrollManagementComponent implements OnInit {
   taxableAmount: number = 0;
   socialInsuranceDeduction: number = 0;
 
-  // 給与区分の選択肢
-  salaryTypes = [
+  // 基本手当区分
+  baseSalaryTypes = [
     { value: 'base', label: '基本給' },
     { value: 'overtime', label: '残業手当' },
     { value: 'commuting', label: '通勤手当' },
     { value: 'family', label: '家族手当' },
     { value: 'housing', label: '住宅手当' },
-    { value: 'bonus', label: '賞与' },
-    { value: 'other', label: 'その他' }
+    { value: 'bonus', label: '賞与' }
   ];
+
+  // カスタム手当区分
+  customAllowances: CustomAllowance[] = [];
+  
+  // 手当区分の選択肢（基本 + カスタム）
+  get salaryTypes() {
+    return [
+      ...this.baseSalaryTypes,
+      ...this.customAllowances.map(a => ({ value: a.value, label: a.label }))
+    ];
+  }
 
   // 登録済み給与明細
   registeredSalaries: RegisteredSalary[] = [];
@@ -125,25 +147,78 @@ export class PayrollManagementComponent implements OnInit {
   gradeLast3: number | null = null;
   gradePrev3: number | null = null;
 
+  currentCompanyId: string = '';
+
+  // カスタム手当管理用
+  showCustomAllowanceModal = false;
+  showCustomAllowanceListModal = false;
+  customAllowanceForm: FormGroup;
+  editingAllowanceId: string | null = null;
+
   // 等級を数値順でソートする関数
   sortByGrade = (a: {key: string}, b: {key: string}): number => {
     return Number(a.key) - Number(b.key);
   };
 
-  constructor(private insurancePremiumService: InsurancePremiumService) {}
+  selectedCSVFile: File | null = null;
+  csvImportMessage: string = '';
+  csvImportSuccess: boolean = false;
+  selectedCSVFileType: string = '';
 
-  ngOnInit(): void {
+  salaryHistories: any[] = [];
+  isHistoryLoading: boolean = false;
+
+  constructor(
+    private insurancePremiumService: InsurancePremiumService,
+    private auth: Auth,
+    private fb: FormBuilder,
+    private authService: AuthService
+  ) {
+    this.customAllowanceForm = this.fb.group({
+      label: ['', Validators.required]
+    });
+  }
+
+  // 表示名を英数字・アンダースコア化＋ランダムID付与
+  private generateIdentifier(label: string): string {
+    let base = label.normalize('NFKC')
+      .replace(/[ぁ-んァ-ヶ一-龠々ー]/g, '') // 日本語除去
+      .replace(/[^a-zA-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .toLowerCase();
+    if (!base) base = 'allowance';
+    const rand = Math.random().toString(36).substring(2, 7);
+    return `${base}_${rand}`;
+  }
+
+  async ngOnInit(): Promise<void> {
     // 今年度と過去数年分を選択肢として用意
     const currentYear = new Date().getFullYear();
     this.yearOptions = [currentYear.toString(), (currentYear - 1).toString(), (currentYear - 2).toString()];
     this.selectedYear = currentYear.toString();
-    this.loadEmployees();
+
+    // AuthServiceの認証初期化完了を待ってからcompanyId$を購読
+    this.authService.isAuthReady$.subscribe(isReady => {
+      if (isReady) {
+        this.authService.companyId$.subscribe(async companyId => {
+          if (companyId) {
+            this.currentCompanyId = companyId;
+            await this.loadEmployees();
+            await this.loadCustomAllowances();
+            if (this.activeTab === 'history') {
+              await this.loadSalaryHistories();
+            }
+          }
+        });
+      }
+    });
   }
 
   async loadEmployees() {
-    // FirestoreやAPIから従業員データを取得する例
+    if (!this.currentCompanyId) return;
     const employeesCol = collection(this.firestore, 'employees');
-    const empSnapshot = await getDocs(employeesCol);
+    const q = query(employeesCol, where('company_id', '==', this.currentCompanyId));
+    const empSnapshot = await getDocs(q);
     this.employees = empSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     this.filteredEmployees = [...this.employees];
   }
@@ -155,6 +230,8 @@ export class PayrollManagementComponent implements OnInit {
     } else if (tab === 'auto-judge') {
       await this.loadAutoJudgeSalaries();
       this.judgeSalaryChange();
+    } else if (tab === 'history') {
+      await this.loadSalaryHistories();
     }
   }
 
@@ -339,20 +416,34 @@ export class PayrollManagementComponent implements OnInit {
   }
 
   // 金額のフォーマット
-  formatAmount(amount: number): string {
-    return amount.toLocaleString('ja-JP');
+  formatAmount(amount: number | undefined | null): string {
+    if (amount === undefined || amount === null || isNaN(Number(amount))) return '';
+    return Number(amount).toLocaleString('ja-JP');
   }
 
   // 特定の区分の金額を取得
-  getDetailAmount(salary: RegisteredSalary, type: string): number {
-    const detail = salary.details.find(d => d.type === type);
-    return detail?.amount || 0;
+  getDetailAmount(salary: RegisteredSalary, typeOrLabel: string): number {
+    if (!salary || !salary.details) return 0;
+    // type値とlabel値の両方で一致を探す
+    const typeMap = new Map(this.salaryTypes.map(t => [t.value, t.label]));
+    const labelMap = new Map(this.salaryTypes.map(t => [t.label, t.value]));
+    return (
+      salary.details.find(
+        d =>
+          d.type === typeOrLabel ||
+          typeMap.get(d.type) === typeOrLabel ||
+          labelMap.get(d.type) === typeOrLabel
+      )?.amount || 0
+    );
   }
 
   // その他手当の合計を計算
   getOtherAllowances(salary: RegisteredSalary): number {
+    if (!salary || !salary.details) return 0;
+    // 基本給・残業手当・通勤手当以外
+    const excludeTypes = ['base', 'overtime', 'commuting', '基本給', '残業手当', '通勤手当'];
     return salary.details
-      .filter(d => !['base', 'overtime', 'commuting'].includes(d.type))
+      .filter(d => !excludeTypes.includes(d.type))
       .reduce((sum, d) => sum + (d.amount || 0), 0);
   }
 
@@ -413,6 +504,8 @@ export class PayrollManagementComponent implements OnInit {
         social_insurance_deduction: this.editSalaryData.social_insurance_deduction,
         updated_at: this.editSalaryData.updated_at
       });
+      // 履歴も保存
+      await this.saveSalaryHistory(employeeId, this.editSalaryData, 'update');
     } catch (e) {
       alert('保存に失敗しました: ' + (e as any).message);
     }
@@ -454,10 +547,41 @@ export class PayrollManagementComponent implements OnInit {
 
     // Firestoreに追加
     const salariesCol = collection(this.firestore, 'employees', employeeId, 'salaries');
-    await addDoc(salariesCol, salaryData);
+    const docRef = await addDoc(salariesCol, salaryData);
+    // 履歴も保存
+    await this.saveSalaryHistory(employeeId, salaryData, 'create');
     this.clearForm();
     // 一覧を更新
     await this.loadRegisteredSalaries();
+  }
+
+  // 履歴保存
+  async saveSalaryHistory(employeeId: string, salaryData: any, operation: 'create' | 'update') {
+    if (!this.currentCompanyId) return;
+    // employeeIdからemployee_codeと氏名を取得
+    const empDoc = this.employees.find(e => e.id === employeeId);
+    const employee_code = empDoc?.employee_code || '';
+    const employee_name = empDoc ? `${empDoc.last_name_kanji || ''}${empDoc.first_name_kanji || ''}` : '';
+    // 操作ユーザー名を取得
+    let operatorName = '';
+    if (this.auth.currentUser && this.auth.currentUser.email) {
+      // ログインユーザーのemailから従業員情報を検索
+      const loginEmp = this.employees.find(e => e.email === this.auth.currentUser!.email);
+      operatorName = loginEmp ? `${loginEmp.last_name_kanji || ''}${loginEmp.first_name_kanji || ''}` : this.auth.currentUser.email;
+    }
+    const historiesCol = collection(this.firestore, 'companies', this.currentCompanyId, 'salary_histories');
+    await addDoc(historiesCol, {
+      employee_id: employee_code, // 社員IDはemployee_codeを保存
+      employee_name: employee_name, // 氏名も保存
+      year_month: salaryData.year_month,
+      details: salaryData.details,
+      total_amount: salaryData.total_amount,
+      taxable_amount: salaryData.taxable_amount,
+      social_insurance_deduction: salaryData.social_insurance_deduction,
+      operation,
+      operated_at: new Date(),
+      operator: operatorName // 氏名で保存
+    });
   }
 
   // 直近12ヶ月分の給与データ取得
@@ -519,7 +643,7 @@ export class PayrollManagementComponent implements OnInit {
     if (gradeLast3 !== null && gradePrev3 !== null) {
       const diff = Math.abs(gradeLast3 - gradePrev3);
       if (diff >= 2) {
-        this.autoJudgeAlert = '2等級以上の変動が検出されました。標準報酬月額の変更届が必要です。';
+      this.autoJudgeAlert = '2等級以上の変動が検出されました。標準報酬月額の変更届が必要です。';
       }
     }
   }
@@ -528,9 +652,14 @@ export class PayrollManagementComponent implements OnInit {
   async loadSalarySummaries() {
     this.isSummaryLoading = true;
     this.salarySummaries = [];
-    // 全従業員取得
+    if (!this.currentCompanyId) {
+      this.isSummaryLoading = false;
+      return;
+    }
+    // 全従業員取得（会社IDで絞り込み）
     const employeesCol = collection(this.firestore, 'employees');
-    const empSnapshot = await getDocs(employeesCol);
+    const q = query(employeesCol, where('company_id', '==', this.currentCompanyId));
+    const empSnapshot = await getDocs(q);
     const employees = empSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     // 全国共通等級表（2025年）を取得
     const grades: { [key: string]: any } = {};
@@ -597,35 +726,363 @@ export class PayrollManagementComponent implements OnInit {
   }
 
   async exportSalariesToCSV(): Promise<void> {
+    if (!this.currentCompanyId) return;
     const employeesCol = collection(this.firestore, 'employees');
-    const empSnapshot = await getDocs(employeesCol);
+    const q = query(employeesCol, where('company_id', '==', this.currentCompanyId));
+    const empSnapshot = await getDocs(q);
     const employees = empSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     const allRows: any[] = [];
+    // type→labelマップ作成
+    const typeLabelMap: { [key: string]: string } = {};
+    for (const t of this.salaryTypes) {
+      typeLabelMap[t.value] = t.label;
+    }
     for (const empRaw of employees) {
       const emp = empRaw as any;
       const salariesCol = collection(this.firestore, 'employees', emp.id, 'salaries');
       const salSnapshot = await getDocs(salariesCol);
       for (const docSnap of salSnapshot.docs) {
         const data = docSnap.data();
-        allRows.push({
-          employeeId: emp.id,
-          year_month: data['year_month'],
-          details: JSON.stringify(data['details']),
-          total_amount: data['total_amount'],
-          taxable_amount: data['taxable_amount'],
-          social_insurance_deduction: data['social_insurance_deduction'],
-          created_at: data['created_at']?.toDate ? data['created_at'].toDate().toISOString() : '',
-          updated_at: data['updated_at']?.toDate ? data['updated_at'].toDate().toISOString() : ''
-        });
+        const details = data['details'] || [];
+        if (Array.isArray(details) && details.length > 0) {
+          for (const detail of details) {
+            allRows.push({
+              companyId: emp.company_id,
+              employee_code: emp.employee_code || emp.id,
+              name: `${emp.last_name_kanji || ''}${emp.first_name_kanji || ''}`.trim(),
+              year_month: data['year_month'],
+              detail_type: typeLabelMap[detail.type] || detail.type,
+              detail_amount: detail.amount,
+              detail_note: detail.note,
+              total_amount: data['total_amount'],
+              taxable_amount: data['taxable_amount']
+            });
+          }
+        } else {
+          // detailsが空の場合も1行出力
+          allRows.push({
+            companyId: emp.company_id,
+            employee_code: emp.employee_code || emp.id,
+            name: `${emp.last_name_kanji || ''}${emp.first_name_kanji || ''}`.trim(),
+            year_month: data['year_month'],
+            detail_type: '',
+            detail_amount: '',
+            detail_note: '',
+            total_amount: data['total_amount'],
+            taxable_amount: data['taxable_amount']
+          });
+        }
       }
     }
     // CSV生成
-    const header = ['employeeId','year_month','details','total_amount','taxable_amount','social_insurance_deduction','created_at','updated_at'];
-    const csv = [header.join(',')].concat(
+    const header = ['companyId','employee_code','name','year_month','detail_type','detail_amount','detail_note','total_amount','taxable_amount'];
+    const headerJp = ['会社ID','社員ID','氏名','対象年月','区分','金額','備考','総支給額','課税対象額'];
+    const csv = [headerJp.join(',')].concat(
       allRows.map(row => header.map(h => '"' + String(row[h]).replace(/"/g, '""') + '"').join(','))
     ).join('\r\n');
     // ダウンロード
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     saveAs(blob, 'salaries_export.csv');
+  }
+
+  // カスタム手当の読み込み
+  async loadCustomAllowances() {
+    if (!this.currentCompanyId) return;
+    const allowancesCol = collection(this.firestore, 'companies', this.currentCompanyId, 'custom_allowances');
+    const q = query(allowancesCol, orderBy('label'));
+    const snapshot = await getDocs(q);
+    this.customAllowances = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      created_at: doc.data()['created_at']?.toDate(),
+      updated_at: doc.data()['updated_at']?.toDate()
+    } as CustomAllowance));
+  }
+
+  // カスタム手当モーダルを開く
+  openCustomAllowanceModal(allowance?: CustomAllowance) {
+    this.editingAllowanceId = allowance?.id || null;
+    this.customAllowanceForm.reset({
+      label: allowance?.label || ''
+    });
+    this.showCustomAllowanceModal = true;
+  }
+
+  // カスタム手当モーダルを閉じる
+  closeCustomAllowanceModal() {
+    this.showCustomAllowanceModal = false;
+    this.editingAllowanceId = null;
+    this.customAllowanceForm.reset();
+  }
+
+  // カスタム手当の保存
+  async saveCustomAllowance() {
+    if (this.customAllowanceForm.invalid || !this.currentCompanyId) return;
+
+    const label = this.customAllowanceForm.value.label;
+    let value = '';
+    if (this.editingAllowanceId) {
+      // 編集時は既存のvalueを維持。ただし空の場合は再生成
+      const existing = this.customAllowances.find(a => a.id === this.editingAllowanceId);
+      value = (existing && existing.value) ? existing.value : this.generateIdentifier(label);
+    } else {
+      // 新規作成時は必ず自動生成
+      value = this.generateIdentifier(label);
+    }
+    if (!value) value = this.generateIdentifier(label); // 念のため
+
+    // --- 追加: 重複チェック ---
+    // 編集時は自分以外、新規時は全件で同じlabelがないか
+    const duplicate = this.customAllowances.find(a => a.label === label && a.id !== this.editingAllowanceId);
+    if (duplicate) {
+      alert('同じ名前の手当区分がすでに存在します。別の名前を入力してください。');
+      return;
+    }
+    // --- ここまで ---
+
+    const data = {
+      value,
+      label,
+      company_id: this.currentCompanyId,
+      created_at: new Date(),
+      updated_at: new Date()
+    };
+
+    try {
+      const allowancesCol = collection(this.firestore, 'companies', this.currentCompanyId, 'custom_allowances');
+      if (this.editingAllowanceId) {
+        // 更新
+        const docRef = doc(allowancesCol, this.editingAllowanceId);
+        await updateDoc(docRef, {
+          label: data.label,
+          updated_at: data.updated_at
+        });
+      } else {
+        // 新規作成
+        await addDoc(allowancesCol, data);
+      }
+      await this.loadCustomAllowances();
+      this.closeCustomAllowanceModal();
+        } catch (error) {
+      console.error('Error saving custom allowance:', error);
+      alert('手当区分の保存に失敗しました。');
+    }
+  }
+
+  // カスタム手当の削除
+  async deleteCustomAllowance(allowance: CustomAllowance) {
+    if (!confirm(`「${allowance.label}」を削除してもよろしいですか？`)) return;
+    if (!this.currentCompanyId) return;
+
+    try {
+      const docRef = doc(this.firestore, 'companies', this.currentCompanyId, 'custom_allowances', allowance.id);
+      await deleteDoc(docRef);
+      await this.loadCustomAllowances();
+    } catch (error) {
+      console.error('Error deleting custom allowance:', error);
+      alert('手当区分の削除に失敗しました。');
+    }
+  }
+
+  // カスタム手当一覧モーダルを閉じる
+  closeCustomAllowanceListModal() {
+    this.showCustomAllowanceListModal = false;
+  }
+
+  onCSVFileChange(event: Event) {
+    const input = event.target as HTMLInputElement;
+    this.selectedCSVFile = input.files && input.files.length > 0 ? input.files[0] : null;
+    const ext = this.selectedCSVFile ? this.selectedCSVFile.name.split('.').pop() : '';
+    this.selectedCSVFileType = ext ? ext.toLowerCase() : '';
+  }
+
+  async importSalariesFromCSV() {
+    this.csvImportMessage = '';
+    this.csvImportSuccess = false;
+    if (!this.selectedCSVFile || !this.currentCompanyId) {
+      this.csvImportMessage = 'ファイルまたは会社IDがありません';
+      return;
+    }
+    try {
+      let rows: any[] = [];
+      let header: string[] = [];
+      if (this.selectedCSVFileType === 'xlsx') {
+        // Excelファイルの場合
+        const data = await this.selectedCSVFile.arrayBuffer();
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        if (json.length < 2) throw new Error('データ行がありません');
+        header = (json[0] as string[]).map(h => h.replace(/^"|"$/g, ''));
+        rows = (json.slice(1) as string[][]).map(colsArr => {
+          const row: any = {};
+          header.forEach((h, i) => row[h] = colsArr[i]);
+          return row;
+        });
+      } else {
+        // CSVファイルの場合
+        const text = await this.selectedCSVFile.text();
+        const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
+        if (lines.length < 2) throw new Error('データ行がありません');
+        header = lines[0].split(',').map(h => h.replace(/^"|"$/g, ''));
+        rows = lines.slice(1).map(line => {
+          const cols = line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(c => c.replace(/^"|"$/g, ''));
+          const row: any = {};
+          header.forEach((h, i) => row[h] = cols[i]);
+          return row;
+        });
+      }
+      // 給与明細ごとにグループ化（社員ID＋年月）
+      const salaryMap: { [key: string]: any } = {};
+      for (const row of rows) {
+        // 全カラムが空の行はスキップ
+        if (Object.values(row).every(v => !v || String(v).trim() === '')) continue;
+        // 列名のトリム
+        const companyId = row['会社ID'] ? String(row['会社ID']).trim() : '';
+        const empCode = row['社員ID'] ? String(row['社員ID']).trim() : '';
+        const yearMonth = this.normalizeYearMonth(row['対象年月']);
+        // 主要カラムが空の行はスキップ（エラー件数にもカウントしない）
+        if (!companyId || !empCode || !yearMonth) continue;
+        const key = `${empCode}_${yearMonth}`;
+        if (!salaryMap[key]) {
+          salaryMap[key] = {
+            employee_code: empCode,
+            year_month: yearMonth,
+            total_amount: Number(row['総支給額']) || 0,
+            taxable_amount: Number(row['課税対象額']) || 0,
+            details: [],
+        created_at: new Date(),
+        updated_at: new Date()
+      };
+        }
+        if (row['区分'] || row['金額']) {
+          salaryMap[key].details.push({
+            type: row['区分'],
+            amount: Number(row['金額']) || 0,
+            note: row['備考'] || ''
+          });
+        }
+      }
+      // Firestoreへ保存
+      const employeesCol = collection(this.firestore, 'employees');
+      let errorCount = 0;
+      for (const key of Object.keys(salaryMap)) {
+        const salary = salaryMap[key];
+        if (!salary.employee_code || !this.currentCompanyId) {
+          errorCount++;
+          continue;
+        }
+        // 社員IDから従業員ドキュメントを検索
+        const q = query(employeesCol, where('company_id', '==', this.currentCompanyId), where('employee_code', '==', salary.employee_code));
+        const empSnapshot = await getDocs(q);
+        if (empSnapshot.empty) {
+          errorCount++;
+          continue;
+        }
+        const empId = empSnapshot.docs[0].id;
+        const salariesCol = collection(this.firestore, 'employees', empId, 'salaries');
+        // 年月で既存ドキュメントを検索
+        const salSnapshot = await getDocs(query(salariesCol, where('year_month', '==', salary.year_month)));
+        if (!salSnapshot.empty) {
+          // 上書き
+          const docRef = doc(this.firestore, 'employees', empId, 'salaries', salSnapshot.docs[0].id);
+          await updateDoc(docRef, {
+            details: salary.details,
+            total_amount: salary.total_amount,
+            taxable_amount: salary.taxable_amount,
+            updated_at: new Date()
+          });
+        } else {
+          // 新規追加
+          await addDoc(salariesCol, salary);
+        }
+      }
+      if (errorCount > 0) {
+        this.csvImportMessage = `インポート完了（一部エラー: ${errorCount}件の社員IDまたは会社IDが不正）`;
+        this.csvImportSuccess = false;
+      } else {
+        this.csvImportMessage = 'インポートが完了しました。';
+        this.csvImportSuccess = true;
+      }
+    } catch (e: any) {
+      this.csvImportMessage = 'インポート失敗: ' + (e.message || e);
+      this.csvImportSuccess = false;
+    }
+    this.selectedCSVFile = null;
+    this.selectedCSVFileType = '';
+    const input = document.getElementById('csvFile') as HTMLInputElement;
+    if (input) input.value = '';
+  }
+
+  // 対象年月をYYYY-MM形式に正規化
+  private normalizeYearMonth(val: any): string {
+    if (!val) return '';
+    if (typeof val === 'number') {
+      // Excel日付シリアル値をYYYY-MMに変換
+      const date = XLSX.SSF.parse_date_code(val);
+      if (date && date.y && date.m) {
+        return `${date.y}-${String(date.m).padStart(2, '0')}`;
+      }
+    }
+    // 2025/04/01や2025-04-01など
+    const m = String(val).match(/(\d{4})[\/-](\d{1,2})/);
+    if (m) {
+      return `${m[1]}-${m[2].padStart(2, '0')}`;
+    }
+    // すでにYYYY-MM形式ならそのまま
+    if (/^\d{4}-\d{2}$/.test(val)) return val;
+    return String(val);
+  }
+
+  async loadSalaryHistories() {
+    this.isHistoryLoading = true;
+    this.salaryHistories = [];
+    if (!this.currentCompanyId) {
+      this.isHistoryLoading = false;
+      return;
+    }
+    const historiesCol = collection(this.firestore, 'companies', this.currentCompanyId, 'salary_histories');
+    const snapshot = await getDocs(historiesCol);
+    // 日付降順で並べ替え（新しい順）
+    let histories = snapshot.docs.map(doc => {
+      const data = doc.data() as any;
+      return { id: doc.id, ...data };
+    });
+    histories.forEach(h => {
+      if (h.operated_at && h.operated_at.toDate) h.operated_at = h.operated_at.toDate();
+    });
+    // 社員ID・年月ごとにグループ化して、直前の履歴と比較
+    histories.sort((a, b) => (b.operated_at?.getTime?.() || 0) - (a.operated_at?.getTime?.() || 0));
+    for (let i = 0; i < histories.length; i++) {
+      const h = histories[i];
+      // 同じ社員ID・年月の直前の履歴を探す
+      const prev = histories.slice(i + 1).find(p => p.employee_id === h.employee_id && p.year_month === h.year_month);
+      h.changeMessage = this.generateChangeMessage(h, prev);
+    }
+    this.salaryHistories = histories;
+    this.isHistoryLoading = false;
+  }
+
+  // 変更内容メッセージ生成関数
+  generateChangeMessage(current: any, prev: any): string {
+    if (!prev) {
+      return '明細が追加されました';
+    }
+    if (current.total_amount !== prev.total_amount) {
+      return `総支給額が変更されました（${prev.total_amount?.toLocaleString()}円→${current.total_amount?.toLocaleString()}円）`;
+    }
+    // 明細の追加
+    const prevTypes = new Set((prev.details || []).map((d: any) => d.type));
+    const currTypes = new Set((current.details || []).map((d: any) => d.type));
+    for (const type of currTypes) {
+      if (!prevTypes.has(type)) {
+        const added = (current.details || []).find((d: any) => d.type === type);
+        // type→label変換（なければtypeそのまま）
+        const label = this.salaryTypes.find(t => t.value === type)?.label || type;
+        return `${label}が追加されました（${added.amount?.toLocaleString()}円）`;
+      }
+    }
+    return '内容が更新されました';
   }
 }

@@ -1,19 +1,30 @@
-/**
- * Import function triggers from their respective submodules:
- *
- * import {onCall} from "firebase-functions/v2/https";
- * import {onDocumentWritten} from "firebase-functions/v2/firestore";
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
- */
+import * as functions from "firebase-functions";
+import * as admin from "firebase-admin";
+admin.initializeApp();
 
-import {onRequest} from "firebase-functions/v2/https";
-import * as logger from "firebase-functions/logger";
+export const createEmployeeWithAuth = functions.https.onCall(
+  async (data, context) => {
+    // 必要なら管理者チェック
+    // if (!context.auth || !context.auth.token.admin)
+    //   throw new functions.https.HttpsError("permission-denied");
 
-// Start writing functions
-// https://firebase.google.com/docs/functions/typescript
+    // 1. Firebase Authユーザー作成
+    const userRecord = await admin.auth().createUser({
+      email: data.data.email,
+      password: data.data.password,
+      displayName: data.data.displayName || "",
+    });
 
-// export const helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
+    // 2. Firestoreに従業員情報を保存
+    const employeeData = {
+      ...data.data.employeeData,
+      uid: userRecord.uid,
+      created_at: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    };
+    await admin.firestore().collection("employees").add(employeeData);
+
+    return {uid: userRecord.uid};
+  }
+);
+
