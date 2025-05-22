@@ -1,9 +1,10 @@
 import { Component } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule, AbstractControl, ValidationErrors, ValidatorFn } from '@angular/forms';
-import { Firestore, doc, setDoc, collection, getDocs, query, where, deleteDoc } from '@angular/fire/firestore';
+import { Firestore, doc, setDoc, collection, getDocs, query, where, deleteDoc, getDoc, serverTimestamp } from '@angular/fire/firestore';
 import { CommonModule } from '@angular/common';
 import { debounceTime } from 'rxjs/operators';
 import { createUserWithEmailAndPassword, Auth } from '@angular/fire/auth';
+import { HttpClient } from '@angular/common/http';
 
 // カタカナのみ許可するバリデータ
 function katakanaValidator(): ValidatorFn {
@@ -37,8 +38,14 @@ export class VendorPageComponent {
   deleteCompanyId: string = '';
   deleteSuccess = false;
   deleteError: string | null = null;
+  departmentCount = 0;
 
-  constructor(private fb: FormBuilder, private firestore: Firestore, private auth: Auth) {
+  constructor(
+    private fb: FormBuilder,
+    private firestore: Firestore,
+    private auth: Auth,
+    private http: HttpClient
+  ) {
     this.companyForm = this.fb.group({
       company_name: ['', Validators.required],
       company_name_kana: ['', [Validators.required, katakanaValidator()]],
@@ -48,7 +55,8 @@ export class VendorPageComponent {
       email: ['', [Validators.required, Validators.email]],
       representative_name: ['', Validators.required],
       representative_title: [''],
-      industry: ['']
+      industry: [''],
+      prefecture_id: ['']
     });
 
     // 会社名の重複チェック（入力が変わるたびに）
@@ -71,11 +79,13 @@ export class VendorPageComponent {
       company_id: ['', Validators.required],
       department_id: [''],
       department_name: ['', Validators.required],
-      location: [''],
+      address: [''],
+      postal_code: [''],
       office_number: [''],
       phone_number: [''],
       email: [''],
-      manager_name: ['']
+      manager_name: ['', Validators.required],
+      prefecture_id: ['']
     });
 
     // 会社ID存在チェック（入力が変わるたびに）
@@ -203,11 +213,13 @@ export class VendorPageComponent {
         company_id: newId,
         department_id: departmentId,
         department_name: '本社',
-        location: '',
+        address: this.companyForm.value.address,
+        postal_code: this.companyForm.value.postal_code,
         office_number: '',
-        phone_number: this.companyForm.value.phone_number || '',
-        email: this.companyForm.value.email || '',
-        manager_name: '',
+        phone_number: this.companyForm.value.phone_number,
+        email: this.companyForm.value.email,
+        manager_name: this.companyForm.value.representative_name,
+        prefecture_id: this.companyForm.value.prefecture_id,
         created_at: new Date(),
         updated_at: new Date()
       };
@@ -223,47 +235,38 @@ export class VendorPageComponent {
   }
 
   async addBranch() {
-    this.branchRegisterSuccess = false;
-    this.branchRegisterError = null;
-    this.newDepartmentId = null;
-    if (this.branchForm.invalid || !this.companyIdExists) {
-      this.branchRegisterError = !this.companyIdExists ? '会社IDが存在しません' : '必須項目をすべて入力してください。';
-      return;
-    }
+    if (this.branchForm.invalid) return;
+
     try {
-      // 会社ID存在チェック（念のため）
-      const companyId = this.branchForm.value.company_id;
-      const companyDocRef = doc(this.firestore, `companies/${companyId}`);
-      const companySnap = await getDocs(query(collection(this.firestore, 'companies')));
-      const exists = companySnap.docs.some(d => d.id === companyId);
-      if (!exists) {
-        this.branchRegisterError = '会社IDが存在しません';
-        this.companyIdExists = false;
+      const companyId = this.branchForm.get('company_id')?.value;
+      const departmentId = this.branchForm.get('department_id')?.value || `${companyId}-${String(this.departmentCount + 1).padStart(2, '0')}`;
+
+      // 事業所IDの重複チェック
+      const departmentDocRef = doc(this.firestore, 'departments', departmentId);
+      const departmentSnap = await getDoc(departmentDocRef);
+      if (departmentSnap.exists()) {
+        this.branchRegisterError = 'この事業所IDは既に使用されています';
         return;
       }
-      // 事業所ID自動採番（company_id-XX 形式）
-      let departmentId = this.branchForm.value.department_id;
-      if (!departmentId) {
-        // 既存の同一会社IDの事業所数をカウント
-        const departmentsCol = collection(this.firestore, 'departments');
-        const q = query(departmentsCol, where('company_id', '==', companyId));
-        const snapshot = await getDocs(q);
-        const count = snapshot.size + 1;
-        departmentId = `${companyId}-${count.toString().padStart(2, '0')}`;
-      }
-      const data = {
+
+      // 事業所情報を保存
+      const departmentData = {
         ...this.branchForm.value,
         department_id: departmentId,
-        created_at: new Date(),
-        updated_at: new Date()
+        address: this.branchForm.get('address')?.value,
+        prefecture_id: this.branchForm.get('prefecture_id')?.value,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
       };
-      const departmentDoc = doc(this.firestore, `departments/${departmentId}`);
-      await setDoc(departmentDoc, data);
+      await setDoc(departmentDocRef, departmentData);
+
       this.branchRegisterSuccess = true;
       this.newDepartmentId = departmentId;
       this.branchForm.reset();
-    } catch (e: any) {
-      this.branchRegisterError = '登録に失敗しました: ' + (e.message || e);
+      this.departmentCount++;
+    } catch (error) {
+      console.error('Error adding branch:', error);
+      this.branchRegisterError = '事業所の登録に失敗しました';
     }
   }
 
@@ -290,6 +293,82 @@ export class VendorPageComponent {
       this.deleteCompanyId = '';
     } catch (e: any) {
       this.deleteError = '削除に失敗しました: ' + (e.message || e);
+    }
+  }
+
+  // 都道府県名から都道府県ID+短縮名を取得する関数
+  getPrefectureId(prefectureName: string): string {
+    const prefectureMap: { [key: string]: string } = {
+      '北海道': '01', '青森県': '02', '岩手県': '03', '宮城県': '04', '秋田県': '05',
+      '山形県': '06', '福島県': '07', '茨城県': '08', '栃木県': '09', '群馬県': '10',
+      '埼玉県': '11', '千葉県': '12', '東京都': '13', '神奈川県': '14', '新潟県': '15',
+      '富山県': '16', '石川県': '17', '福井県': '18', '山梨県': '19', '長野県': '20',
+      '岐阜県': '21', '静岡県': '22', '愛知県': '23', '三重県': '24', '滋賀県': '25',
+      '京都府': '26', '大阪府': '27', '兵庫県': '28', '奈良県': '29', '和歌山県': '30',
+      '鳥取県': '31', '島根県': '32', '岡山県': '33', '広島県': '34', '山口県': '35',
+      '徳島県': '36', '香川県': '37', '愛媛県': '38', '高知県': '39', '福岡県': '40',
+      '佐賀県': '41', '長崎県': '42', '熊本県': '43', '大分県': '44', '宮崎県': '45',
+      '鹿児島県': '46', '沖縄県': '47'
+    };
+    const id = prefectureMap[prefectureName];
+    // 「県」「府」「都」「道」を除去
+    const shortName = prefectureName.replace(/(都|道|府|県)$/, '');
+    return id ? id + shortName : '';
+  }
+
+  // 郵便番号から住所を検索（会社用）
+  async searchCompanyAddressByPostalCode(postalCode: string) {
+    if (!postalCode || postalCode.length !== 7) return;
+    try {
+      const response = await this.http.get<any>(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${postalCode}`).toPromise();
+      if (response && response.results && response.results[0]) {
+        const address = response.results[0];
+        const fullAddress = `${address.address1}${address.address2}${address.address3}`;
+        const prefectureId = this.getPrefectureId(address.address1);
+        this.companyForm.patchValue({ 
+          address: fullAddress,
+          prefecture_id: prefectureId
+        });
+      }
+    } catch (error) {
+      console.error('郵便番号検索エラー:', error);
+    }
+  }
+
+  // 郵便番号から住所を検索（事業所用）
+  async searchBranchAddressByPostalCode(postalCode: string) {
+    if (!postalCode || postalCode.length !== 7) return;
+    try {
+      const response = await this.http.get<any>(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${postalCode}`).toPromise();
+      if (response && response.results && response.results[0]) {
+        const address = response.results[0];
+        const fullAddress = `${address.address1}${address.address2}${address.address3}`;
+        const prefectureId = this.getPrefectureId(address.address1);
+        this.branchForm.patchValue({ 
+          address: fullAddress,
+          prefecture_id: prefectureId
+        });
+      }
+    } catch (error) {
+      console.error('郵便番号検索エラー:', error);
+    }
+  }
+
+  // 郵便番号入力時の処理
+  onPostalCodeChange(postalCode: string | null) {
+    if (!postalCode) return;
+    const cleanPostalCode = postalCode.replace(/-/g, '');
+    if (cleanPostalCode.length === 7) {
+      this.searchBranchAddressByPostalCode(cleanPostalCode);
+    }
+  }
+
+  // companyForm用：郵便番号入力時の処理
+  onCompanyPostalCodeChange(postalCode: string | null) {
+    if (!postalCode) return;
+    const cleanPostalCode = postalCode.replace(/-/g, '');
+    if (cleanPostalCode.length === 7) {
+      this.searchCompanyAddressByPostalCode(cleanPostalCode);
     }
   }
 }

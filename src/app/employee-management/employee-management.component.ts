@@ -4,11 +4,15 @@ import { Auth, createUserWithEmailAndPassword } from '@angular/fire/auth';
 import { Firestore, collection, query, where, getDocs, doc, updateDoc, addDoc } from '@angular/fire/firestore';
 import { FormBuilder, FormGroup, ReactiveFormsModule, FormArray, Validators, AbstractControl, ValidatorFn } from '@angular/forms';
 import { AddMemberButtonComponent } from '../shared/components/add-member-button/add-member-button.component';
+import { AuthService } from '../shared/services/auth.service';
+import { switchMap, map } from 'rxjs/operators';
+import { of, from } from 'rxjs';
+import { FormsModule } from '@angular/forms';
 
 @Component({
   selector: 'app-employee-management',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, AddMemberButtonComponent],
+  imports: [CommonModule, ReactiveFormsModule, AddMemberButtonComponent, FormsModule],
   templateUrl: './employee-management.component.html',
   styleUrl: './employee-management.component.scss'
 })
@@ -144,7 +148,19 @@ export class EmployeeManagementComponent implements OnInit {
 
   showMyNumber: boolean = false;
 
-  constructor(private auth: Auth, private firestore: Firestore, private fb: FormBuilder) {
+  showPartTimeFieldsModal = false;
+  partTimeFieldsForm: FormGroup;
+
+  public user$;
+  public isAuthReady$;
+  public employeeInfo$;
+
+  constructor(
+    private auth: Auth,
+    private firestore: Firestore,
+    private fb: FormBuilder,
+    private authService: AuthService
+  ) {
     this.searchForm = this.fb.group({
       employee_id: ['']
     });
@@ -217,22 +233,46 @@ export class EmployeeManagementComponent implements OnInit {
       note: [''],
       myNumber: ['']
     });
+    this.partTimeFieldsForm = this.fb.group({
+      scheduled_working_hours: [''],
+      employment_contract_period: [''],
+      expected_monthly_income: [''],
+      student_category: ['学生ではない']
+    });
+    this.user$ = this.authService.user$;
+    this.isAuthReady$ = this.authService.isAuthReady$;
+    this.employeeInfo$ = this.user$.pipe(
+      switchMap(user => {
+        if (!user?.email) return of(null);
+        const employeesCol = collection(this.firestore, 'employees');
+        const q = query(employeesCol, where('email', '==', user.email));
+        return from(getDocs(q)).pipe(
+          map(snapshot => {
+            if (snapshot.empty) return null;
+            const data = snapshot.docs[0].data();
+            return {
+              company_id: data['company_id'],
+              employee_code: data['employee_code'],
+              name: `${data['last_name_kanji'] || ''}${data['first_name_kanji'] || ''}`
+            };
+          })
+        );
+      })
+    );
   }
 
   async ngOnInit() {
-    // ログインユーザーの会社ID取得
-    const user = this.auth.currentUser;
-    if (user && user.email) {
-      const employeesCol = collection(this.firestore, 'employees');
-      const q = query(employeesCol, where('email', '==', user.email));
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        const data = snapshot.docs[0].data();
-        this.companyId = data['company_id'] || '';
-        // 会社IDで従業員一覧取得
+    // 認証状態の購読
+    this.authService.isAuthReady$.subscribe(isReady => {
+      if (isReady) {
+        this.authService.companyId$.subscribe(async companyId => {
+          if (companyId) {
+            this.companyId = companyId;
         await this.loadEmployees();
+          }
+        });
       }
-    }
+    });
     // 検索欄の値が変わったらフィルタ
     this.searchForm.get('employee_id')!.valueChanges.subscribe(val => {
       this.filterEmployees(val);
@@ -693,11 +733,8 @@ export class EmployeeManagementComponent implements OnInit {
       const formValue = this.newEmployeeForm.value;
       // パスワードを自動生成
       const generatedPassword = this.generateRandomPassword(formValue.employee_code);
-
-      // 1. Firebase Authにユーザー登録
-      await createUserWithEmailAndPassword(this.auth, formValue.email, generatedPassword);
-
-      // 2. Firestoreに従業員情報を保存
+      
+      // Firestoreに従業員情報を保存（Auth登録はしない）
       const newEmployeeData = {
         ...formValue,
         password: generatedPassword,
@@ -716,12 +753,35 @@ export class EmployeeManagementComponent implements OnInit {
       this.newEmployeeForm.get('company_id')?.disable();
       const employeesCol = collection(this.firestore, 'employees');
       await addDoc(employeesCol, newEmployeeData);
-
+      
       alert(`新規メンバーを追加しました。\n初期パスワード: ${generatedPassword}\n\n※このパスワードはこの画面でのみ表示されます。`);
       this.showNewEmployeeModal = false;
       await this.loadEmployees();
     } catch (error: any) {
       alert('新規メンバーの追加に失敗しました: ' + (error.message || error));
+    }
+  }
+
+  // 個別サインアップ処理
+  async signUpEmployee(employee: any) {
+    if (!employee.email || !employee.password) {
+      alert('メールアドレスまたはパスワードがありません');
+      return;
+    }
+    try {
+      const userCredential = await createUserWithEmailAndPassword(this.auth, employee.email, employee.password);
+      // サインアップ成功時にuidをFirestoreに保存
+      const employeesCol = collection(this.firestore, 'employees');
+      const q = query(employeesCol, where('employee_code', '==', employee.employee_code), where('company_id', '==', employee.company_id));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const ref = doc(this.firestore, 'employees', snapshot.docs[0].id);
+        await updateDoc(ref, { uid: userCredential.user.uid });
+      }
+      alert('サインアップが完了しました');
+      await this.loadEmployees();
+    } catch (error: any) {
+      alert('サインアップに失敗しました: ' + (error.message || error));
     }
   }
 
@@ -795,5 +855,31 @@ export class EmployeeManagementComponent implements OnInit {
 
   toggleMyNumber() {
     this.showMyNumber = !this.showMyNumber;
+  }
+
+  // 雇用形態変更時のハンドラ
+  onEmploymentTypeChange() {
+    const type = this.newEmployeeForm.get('employment_type')?.value;
+    if (type === 'パート' || type === 'アルバイト') {
+      // 既存値をサブモーダルに反映
+      this.partTimeFieldsForm.patchValue({
+        scheduled_working_hours: this.newEmployeeForm.get('scheduled_working_hours')?.value || '',
+        employment_contract_period: this.newEmployeeForm.get('employment_contract_period')?.value || '',
+        expected_monthly_income: this.newEmployeeForm.get('expected_monthly_income')?.value || '',
+        student_category: this.newEmployeeForm.get('student_category')?.value || '学生ではない'
+      });
+      this.showPartTimeFieldsModal = true;
+    }
+  }
+
+  // サブモーダルの保存
+  savePartTimeFields() {
+    this.newEmployeeForm.patchValue(this.partTimeFieldsForm.value);
+    this.showPartTimeFieldsModal = false;
+  }
+
+  // サブモーダルのキャンセル
+  cancelPartTimeFields() {
+    this.showPartTimeFieldsModal = false;
   }
 }

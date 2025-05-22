@@ -1,4 +1,25 @@
 <div class="payroll-management-container">
+  <!-- ログイン情報表示 -->
+  <div class="dashboard-user-info" style="position: absolute; top: 1.2rem; right: 2.5rem; background: #e3f2fd; color: #1976d2; border-radius: 8px; padding: 0.7rem 1.2rem; font-size: 1rem; font-weight: 500; box-shadow: 0 2px 8px rgba(25, 118, 210, 0.08);">
+    <ng-container *ngIf="isAuthReady$ | async as isReady">
+      <ng-container *ngIf="isReady; else loading">
+        <ng-container *ngIf="employeeInfo$ | async as info; else notLoggedIn">
+          <span *ngIf="info; else notLoggedIn">
+            ログイン中：会社ID:{{ info.company_id }}／社員ID:{{ info.employee_code }}／氏名:{{ info.name }}
+          </span>
+        </ng-container>
+        <ng-template #notLoggedIn>
+          <ng-container *ngIf="user$ | async as user">
+            <span *ngIf="user?.email">ログイン中：{{ user.email }}</span>
+            <span *ngIf="!user?.email">ログイン情報が取得できません</span>
+          </ng-container>
+        </ng-template>
+      </ng-container>
+      <ng-template #loading>
+        <span>認証確認中...</span>
+      </ng-template>
+    </ng-container>
+  </div>
   <h1>給与情報管理</h1>
   <div class="tab-header">
     <button [class.active]="activeTab === 'salary'" (click)="onTabChange('salary')">💼 月額給与・手当・賞与管理</button>
@@ -22,11 +43,11 @@
           <label for="employee">従業員</label>
           <select id="employee" [(ngModel)]="selectedEmployeeId" name="employee" (change)="onEmployeeSelect()" required>
             <option value="">選択してください</option>
-            <option *ngFor="let emp of filteredEmployees" [value]="emp.id">
+          <option *ngFor="let emp of filteredEmployees" [value]="emp.id">
               {{emp.last_name_kanji}} {{emp.first_name_kanji}} ({{emp.employee_code}})
-            </option>
-          </select>
-        </div>
+          </option>
+        </select>
+      </div>
 
         <div class="form-group">
           <label for="yearMonth">対象年月</label>
@@ -38,12 +59,12 @@
           <div class="detail-actions">
             <button type="button" (click)="addSalaryDetail()">明細追加</button>
             <button type="button" (click)="openCustomAllowanceModal()">手当区分管理</button>
-          </div>
+      </div>
           <div class="detail-list">
             <div class="detail-item" *ngFor="let detail of salaryDetails; let i = index">
               <select [(ngModel)]="detail.type" name="type{{i}}" (change)="onDetailChange()">
                 <option *ngFor="let type of salaryTypes" [value]="type.value">{{type.label}}</option>
-              </select>
+                </select>
               <input type="number" [(ngModel)]="detail.amount" name="amount{{i}}" (input)="onDetailChange()" placeholder="金額">
               <input type="text" [(ngModel)]="detail.note" name="note{{i}}" placeholder="備考">
               <button type="button" (click)="removeSalaryDetail(i)">削除</button>
@@ -63,14 +84,14 @@
           <div class="total-item">
             <span>社会保険料控除額:</span>
             <span>{{formatAmount(socialInsuranceDeduction)}}円</span>
-          </div>
-        </div>
+      </div>
+      </div>
 
         <div class="form-actions">
-          <button type="submit">登録</button>
-          <button type="button" (click)="clearForm()">クリア</button>
-        </div>
-      </form>
+        <button type="submit">登録</button>
+        <button type="button" (click)="clearForm()">クリア</button>
+      </div>
+    </form>
     </div>
     <div class="section">
       <h3>登録済み給与明細一覧</h3>
@@ -210,7 +231,7 @@
         <div class="mb-3">
           <label for="excelFile" class="form-label">協会けんぽExcelファイル</label>
           <input type="file" class="form-control" id="excelFile" accept=".xlsx,.xls" (change)="onFileInputChange($event)" [disabled]="isImporting">
-        </div>
+          </div>
         <div class="mb-3" *ngIf="sheetNames.length > 0">
           <label for="sheetSelect" class="form-label">シート選択（都道府県）</label>
           <select id="sheetSelect" class="form-select" [(ngModel)]="selectedSheetName">
@@ -271,10 +292,6 @@
                 <td>{{ grade.value.salaryMax | number }}</td>
                 <td>{{ grade.value.ippan.full | number }}</td>
                 <td>{{ grade.value.ippan.half | number }}</td>
-                <td>{{ grade.value.tokutei.full | number }}</td>
-                <td>{{ grade.value.tokutei.half | number }}</td>
-                <td>{{ grade.value.kihon.full | number }}</td>
-                <td>{{ grade.value.kihon.half | number }}</td>
               </tr>
             </tbody>
           </table>

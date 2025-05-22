@@ -1,6 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule, KeyValuePipe } from '@angular/common';
-import { Firestore, collection, addDoc, doc, getDocs, query, orderBy, updateDoc, where, deleteDoc } from '@angular/fire/firestore';
+import { Firestore, collection, addDoc, doc, getDocs, query, orderBy, updateDoc, where, deleteDoc, getDoc } from '@angular/fire/firestore';
 import { inject } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import * as XLSX from 'xlsx';
@@ -11,6 +11,8 @@ import { saveAs } from 'file-saver';
 import { Auth } from '@angular/fire/auth';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { AuthService } from '../shared/services/auth.service';
+import { switchMap, map } from 'rxjs/operators';
+import { of, from } from 'rxjs';
 
 interface SalaryDetail {
   type: string;
@@ -51,10 +53,10 @@ interface SalarySummary {
 
 @Component({
   selector: 'app-payroll-management',
-  templateUrl: './payroll-management.component.html',
-  styleUrls: ['./payroll-management.component.scss'],
   standalone: true,
-  imports: [CommonModule, FormsModule, ReactiveFormsModule, KeyValuePipe]
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, KeyValuePipe],
+  templateUrl: './payroll-management.component.html',
+  styleUrls: ['./payroll-management.component.scss']
 })
 export class PayrollManagementComponent implements OnInit {
   activeTab: string = 'salary';
@@ -87,7 +89,7 @@ export class PayrollManagementComponent implements OnInit {
     return [
       ...this.baseSalaryTypes,
       ...this.customAllowances.map(a => ({ value: a.value, label: a.label }))
-    ];
+  ];
   }
 
   // 登録済み給与明細
@@ -168,6 +170,10 @@ export class PayrollManagementComponent implements OnInit {
   salaryHistories: any[] = [];
   isHistoryLoading: boolean = false;
 
+  public user$;
+  public isAuthReady$;
+  public employeeInfo$;
+
   constructor(
     private insurancePremiumService: InsurancePremiumService,
     private auth: Auth,
@@ -177,6 +183,26 @@ export class PayrollManagementComponent implements OnInit {
     this.customAllowanceForm = this.fb.group({
       label: ['', Validators.required]
     });
+    this.user$ = this.authService.user$;
+    this.isAuthReady$ = this.authService.isAuthReady$;
+    this.employeeInfo$ = this.user$.pipe(
+      switchMap(user => {
+        if (!user?.email) return of(null);
+        const employeesCol = collection(this.firestore, 'employees');
+        const q = query(employeesCol, where('email', '==', user.email));
+        return from(getDocs(q)).pipe(
+          map(snapshot => {
+            if (snapshot.empty) return null;
+            const data = snapshot.docs[0].data();
+            return {
+              company_id: data['company_id'],
+              employee_code: data['employee_code'],
+              name: `${data['last_name_kanji'] || ''}${data['first_name_kanji'] || ''}`
+            };
+          })
+        );
+      })
+    );
   }
 
   // 表示名を英数字・アンダースコア化＋ランダムID付与
@@ -197,7 +223,7 @@ export class PayrollManagementComponent implements OnInit {
     this.yearOptions = [currentYear.toString(), (currentYear - 1).toString(), (currentYear - 2).toString()];
     this.selectedYear = currentYear.toString();
 
-    // AuthServiceの認証初期化完了を待ってからcompanyId$を購読
+    // 認証状態の購読
     this.authService.isAuthReady$.subscribe(isReady => {
       if (isReady) {
         this.authService.companyId$.subscribe(async companyId => {
@@ -866,7 +892,7 @@ export class PayrollManagementComponent implements OnInit {
         } catch (error) {
       console.error('Error saving custom allowance:', error);
       alert('手当区分の保存に失敗しました。');
-    }
+        }
   }
 
   // カスタム手当の削除
@@ -887,7 +913,7 @@ export class PayrollManagementComponent implements OnInit {
   // カスタム手当一覧モーダルを閉じる
   closeCustomAllowanceListModal() {
     this.showCustomAllowanceListModal = false;
-  }
+    }
 
   onCSVFileChange(event: Event) {
     const input = event.target as HTMLInputElement;
@@ -961,8 +987,8 @@ export class PayrollManagementComponent implements OnInit {
             type: row['区分'],
             amount: Number(row['金額']) || 0,
             note: row['備考'] || ''
-          });
-        }
+    });
+  }
       }
       // Firestoreへ保存
       const employeesCol = collection(this.firestore, 'employees');
@@ -1084,5 +1110,16 @@ export class PayrollManagementComponent implements OnInit {
       }
     }
     return '内容が更新されました';
+  }
+
+  // 全国ドキュメント（prefectures/全国）の情報を取得してコンソールに出力するテスト用メソッド
+  async getZenkokuPrefectureTest() {
+    const zenkokuDocRef = doc(this.firestore, 'prefectures', '全国');
+    const zenkokuDoc = await getDoc(zenkokuDocRef);
+    if (zenkokuDoc.exists()) {
+      console.log('全国ドキュメントの内容:', zenkokuDoc.id, zenkokuDoc.data());
+    } else {
+      console.log('全国ドキュメントは存在しません');
+    }
   }
 }

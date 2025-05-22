@@ -13,8 +13,6 @@ export interface InsurancePremium {
   salaryMin: number;
   salaryMax: number;
   ippan: { full: number; half: number };
-  tokutei: { full: number; half: number };
-  kihon: { full: number; half: number };
 }
 
 export interface PremiumGrade {

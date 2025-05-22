@@ -1,0 +1,98 @@
+<div class="master-settings-admin-container">
+  <h1>マスタ設定・自社管理（管理者専用）</h1>
+  <div class="tab-header">
+    <button [class.active]="selectedTab === 'office'" (click)="selectTab('office')">🏢 拠点・事業所マスタ管理</button>
+    <button [class.active]="selectedTab === 'company'" (click)="selectTab('company')">🏠 自社情報管理</button>
+    <button [class.active]="selectedTab === 'user'" (click)="selectTab('user')">🔑 ユーザーアカウント・権限管理</button>
+    <button [class.active]="selectedTab === 'log'" (click)="selectTab('log')">📜 操作ログ・変更履歴管理</button>
+  </div>
+  <div class="tab-content">
+    <ng-container *ngIf="selectedTab === 'office'">
+      <h2>🏢 拠点・事業所マスタ管理</h2>
+      <ul>
+        <li>拠点情報の登録・編集・削除</li>
+        <li>事業所情報の登録・編集・削除</li>
+        <li>保険料率・保険ルールの設定・更新（都道府県別など）</li>
+      </ul>
+    </ng-container>
+    <ng-container *ngIf="selectedTab === 'company'">
+      <h2>🏠 自社情報管理</h2>
+      <div class="card" *ngIf="companyInfo">
+        <h3>会社情報</h3>
+        <div class="edit-buttons" *ngIf="!isEditingCompany">
+          <button (click)="startEditingCompany()">編集</button>
+        </div>
+        <table class="info-table">
+          <tbody>
+            <tr *ngFor="let key of ['company_id', 'company_name', 'company_name_kana', 'contact_email', 'phone_number', 'postal_code', 'address', 'representative_name']">
+              <ng-container *ngIf="companyInfo[key] !== undefined">
+                <th>{{ fieldLabels[key] || key }}</th>
+                <td>
+                  <ng-container *ngIf="!isEditingCompany">
+                    {{ companyInfo[key] }}
+                  </ng-container>
+                  <ng-container *ngIf="isEditingCompany">
+                    <input *ngIf="key !== 'postal_code'" type="text" [(ngModel)]="companyForm[key]" [placeholder]="fieldLabels[key] || key">
+                    <input *ngIf="key === 'postal_code'" type="text" [(ngModel)]="companyForm[key]" [placeholder]="fieldLabels[key] || key" (ngModelChange)="onPostalCodeChange($event)" maxlength="8">
+                  </ng-container>
+                </td>
+              </ng-container>
+            </tr>
+          </tbody>
+        </table>
+        <div class="edit-buttons" *ngIf="isEditingCompany">
+          <button (click)="saveCompanyInfo()">保存</button>
+          <button (click)="cancelEditingCompany()">キャンセル</button>
+        </div>
+      </div>
+      <div class="card" *ngIf="departmentList.length > 0">
+        <h3>事業所情報一覧</h3>
+        <div *ngFor="let dept of departmentList" class="department-info">
+          <h4>{{ dept.department_name }}</h4>
+          <div class="edit-buttons" *ngIf="!isEditingDepartment[dept.id]">
+            <button (click)="startEditingDepartment(dept.id)">編集</button>
+          </div>
+          <table class="info-table">
+            <tbody>
+              <tr *ngFor="let col of dept | keyvalue">
+                <ng-container *ngIf="col.key !== 'id' && col.key !== 'created_at' && col.key !== 'updated_at'">
+                  <th>{{ fieldLabels[col.key] || col.key }}</th>
+                  <td>
+                    <ng-container *ngIf="!isEditingDepartment[dept.id]">
+                      {{ col.value }}
+                    </ng-container>
+                    <ng-container *ngIf="isEditingDepartment[dept.id]">
+                      <input type="text" [(ngModel)]="departmentForm[col.key]" [placeholder]="fieldLabels[col.key] || col.key">
+                    </ng-container>
+                  </td>
+                </ng-container>
+              </tr>
+            </tbody>
+          </table>
+          <div class="edit-buttons" *ngIf="isEditingDepartment[dept.id]">
+            <button (click)="saveDepartmentInfo(dept.id)">保存</button>
+            <button (click)="cancelEditingDepartment(dept.id)">キャンセル</button>
+          </div>
+        </div>
+      </div>
+    </ng-container>
+    <ng-container *ngIf="selectedTab === 'user'">
+      <h2>🔑 ユーザーアカウント・権限管理</h2>
+      <ul>
+        <li>ユーザー一覧表示・検索</li>
+        <li>アカウント作成・編集・削除</li>
+        <li>権限設定（管理者、一般ユーザー、閲覧のみなど）</li>
+        <li>パスワードリセット・ロック解除機能</li>
+      </ul>
+    </ng-container>
+    <ng-container *ngIf="selectedTab === 'log'">
+      <h2>📜 操作ログ・変更履歴管理</h2>
+      <ul>
+        <li>ユーザー操作ログの閲覧（ログイン履歴、操作履歴）</li>
+        <li>重要データ変更履歴（給与情報・保険番号など）</li>
+        <li>アクセス監視・不正検知アラート設定</li>
+      </ul>
+    </ng-container>
+  </div>
+  <!-- ここに事業所一覧・編集UIを追加予定 -->
+</div>

@@ -15,12 +15,25 @@ export const routes: Routes = [
   { path: '', redirectTo: 'login', pathMatch: 'full' },
   { path: 'login', component: LoginComponent },
   { path: 'dashboard', component: DashboardComponent },
-  { path: 'employee-management', component: EmployeeManagementComponent },
+  {
+    path: 'employee-management',
+    loadComponent: () => import('./employee-management/employee-management.component').then(m => m.EmployeeManagementComponent)
+  },
   { path: 'insurance-procedures', component: InsuranceProceduresComponent },
   { path: 'application-approval', component: ApplicationApprovalComponent },
-  { path: 'payroll-management', component: PayrollManagementComponent },
-  { path: 'insurance-premium-calculation', component: InsurancePremiumCalculationComponent },
+  {
+    path: 'payroll-management',
+    loadComponent: () => import('./payroll-management/payroll-management.component').then(m => m.PayrollManagementComponent)
+  },
+  {
+    path: 'insurance-premium-calculation',
+    loadComponent: () => import('./insurance-premium-calculation/insurance-premium-calculation.component').then(m => m.InsurancePremiumCalculationComponent)
+  },
   { path: 'report-export', component: ReportExportComponent },
   { path: 'admin-pages', component: AdminPagesComponent },
-  { path: 'vendor-page', component: VendorPageComponent, canActivate: [vendorGuard] }
+  { path: 'vendor-page', component: VendorPageComponent, canActivate: [vendorGuard] },
+  {
+    path: 'master-settings',
+    loadComponent: () => import('./master-settings-admin/master-settings-admin.component').then(m => m.MasterSettingsAdminComponent)
+  }
 ];

@@ -23,7 +23,9 @@ export class InsurancePremiumService {
       return 0;
     }
     // 数値以外の文字を除去して数値に変換
-    return Number(String(value).replace(/[^\d.-]/g, '')) || 0;
+    const num = Number(String(value).replace(/[^0-9.-]/g, '')) || 0;
+    // 小数第1位までで四捨五入
+    return Math.round(num * 10) / 10;
   }
 
   private parseMaxSalary(value: any, minSalary: number): number {
@@ -80,18 +82,18 @@ export class InsurancePremiumService {
 
           // カラムインデックス
           const gradeIdx = 0; // 等級
-          const salaryIdx = 1; // 月額
+          const salaryIdx = 1; // 標準報酬月額
           const minIdx = 2; // 円以上
-          const maxIdx = 4; // E列（円未満）
-          const ippanFullIdx = 5; // 一般保険料（全額）
-          const ippanHalfIdx = 6; // 一般保険料（折半額）
-          const tokuteiFullIdx = 7; // 特定保険料（全額）
-          const tokuteiHalfIdx = 8; // 特定保険料（折半額）
-          const kihonFullIdx = 9; // 基本保険料（全額）
-          const kihonHalfIdx = 10; // 基本保険料（折半額）
+          const maxIdx = 4; // 円未満
+          const ippanFullIdx = 5; // 2号保険者に該当しない（全額）
+          const ippanHalfIdx = 6; // 2号保険者に該当しない（折半額）
+          const tokuteiFullIdx = 7; // 2号保険者に該当する（全額）
+          const tokuteiHalfIdx = 8; // 2号保険者に該当する（折半額）
+          const kouseiFullIdx = 9; // 厚生年金保険料（全額）
+          const kouseiHalfIdx = 10; // 厚生年金保険料（半額）
 
-          // 11行目（インデックス10）以降がデータ
-          const dataRows = allRows.slice(10).filter(row => row[gradeIdx]);
+          // 12行目（インデックス11）から61行目（インデックス60）までがデータ
+          const dataRows = allRows.slice(11, 61).filter(row => row[gradeIdx]);
 
           const premiums: { [key: string]: any } = {};
 
@@ -109,8 +111,8 @@ export class InsurancePremiumService {
             const ippanHalf = this.parseNumber(row[ippanHalfIdx]);
             const tokuteiFull = this.parseNumber(row[tokuteiFullIdx]);
             const tokuteiHalf = this.parseNumber(row[tokuteiHalfIdx]);
-            const kihonFull = this.parseNumber(row[kihonFullIdx]);
-            const kihonHalf = this.parseNumber(row[kihonHalfIdx]);
+            const kouseiFull = this.parseNumber(row[kouseiFullIdx]);
+            const kouseiHalf = this.parseNumber(row[kouseiHalfIdx]);
 
             premiums[gradeId] = {
               standardSalary,
@@ -118,7 +120,7 @@ export class InsurancePremiumService {
               salaryMax,
               ippan: { full: ippanFull, half: ippanHalf },
               tokutei: { full: tokuteiFull, half: tokuteiHalf },
-              kihon: { full: kihonFull, half: kihonHalf }
+              kousei: { full: kouseiFull, half: kouseiHalf }
             };
           }
 
@@ -127,18 +129,9 @@ export class InsurancePremiumService {
           const prefectureDoc = doc(prefectureCollection, prefectureId);
           const yearCollection = collection(prefectureDoc, 'insurance_premiums', year, 'grades');
           for (const [gradeId, premium] of Object.entries(premiums)) {
-            // 都道府県ごとの保存（従来通り）
+            // 都道府県ごとの保存
             const gradeDoc = doc(yearCollection, gradeId);
             await setDoc(gradeDoc, premium);
-
-            // 全国共通コレクションへの保存
-            const nationalCollection = collection(this.firestore, 'prefectures', '全国', 'insurance_premiums', year, 'grades');
-            const nationalDoc = doc(nationalCollection, gradeId);
-            await setDoc(nationalDoc, {
-              standardSalary: premium.standardSalary,
-              salaryMin: premium.salaryMin,
-              salaryMax: premium.salaryMax
-            });
           }
 
           resolve();
@@ -174,11 +167,7 @@ export class InsurancePremiumService {
         '報酬月額下限': premium.salaryMin,
         '報酬月額上限': premium.salaryMax,
         '一般保険料（全額）': premium.ippan.full,
-        '一般保険料（折半額）': premium.ippan.half,
-        '特定保険料（全額）': premium.tokutei.full,
-        '特定保険料（折半額）': premium.tokutei.half,
-        '基本保険料（全額）': premium.kihon.full,
-        '基本保険料（折半額）': premium.kihon.half
+        '一般保険料（折半額）': premium.ippan.half
       };
     });
 

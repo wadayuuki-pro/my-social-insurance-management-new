@@ -1,1 +1,220 @@
-<p>insurance-premium-calculation works!</p>
+<div class="insurance-premium-container">
+  <!-- ログイン情報表示 -->
+  <div class="dashboard-user-info" style="position: absolute; top: 1.2rem; right: 2.5rem; background: #e3f2fd; color: #1976d2; border-radius: 8px; padding: 0.7rem 1.2rem; font-size: 1rem; font-weight: 500; box-shadow: 0 2px 8px rgba(25, 118, 210, 0.08);">
+    <ng-container *ngIf="isAuthReady$ | async as isReady">
+      <ng-container *ngIf="isReady; else loading">
+        <ng-container *ngIf="employeeInfo$ | async as info; else notLoggedIn">
+          <span *ngIf="info; else notLoggedIn">
+            ログイン中：会社ID:{{ info.company_id }}／社員ID:{{ info.employee_code }}／氏名:{{ info.name }}
+          </span>
+        </ng-container>
+        <ng-template #notLoggedIn>
+          <ng-container *ngIf="user$ | async as user">
+            <span *ngIf="user?.email">ログイン中：{{ user.email }}</span>
+            <span *ngIf="!user?.email">ログイン情報が取得できません</span>
+          </ng-container>
+        </ng-template>
+      </ng-container>
+      <ng-template #loading>
+        <span>認証確認中...</span>
+      </ng-template>
+    </ng-container>
+  </div>
+  <h1>保険料管理</h1>
+  <div class="tab-header">
+    <button [class.active]="selectedTab === 'calculation'" (click)="selectTab('calculation')">💼 保険料計算</button>
+    <button [class.active]="selectedTab === 'ratio'" (click)="selectTab('ratio')">⚖️ 負担比率</button>
+    <button [class.active]="selectedTab === 'master'" (click)="selectTab('master')">📋 マスタ管理</button>
+    <button [class.active]="selectedTab === 'history'" (click)="selectTab('history')">📜 履歴閲覧</button>
+    <button [class.active]="selectedTab === 'table'" (click)="selectTab('table')">🏥 保険料表管理</button>
+  </div>
+
+  <div class="tab-content">
+    <ng-container *ngIf="selectedTab === 'calculation'">
+      <h2>保険料計算</h2>
+      <div class="section">
+        <div class="form-group">
+          <label for="employeeSearch">従業員検索（氏名・ID）</label>
+          <input type="text" id="employeeSearch" placeholder="氏名・IDで検索" [(ngModel)]="searchText" (ngModelChange)="filterEmployees()" name="employeeSearch" />
+        </div>
+
+        <div class="form-group">
+          <label for="employee">従業員</label>
+          <select id="employee" [(ngModel)]="selectedEmployeeId" name="employee" (change)="onEmployeeSelect()" required>
+            <option value="">選択してください</option>
+            <option *ngFor="let emp of filteredEmployees" [value]="emp.id">
+              {{emp.last_name_kanji}}{{emp.first_name_kanji}} ({{emp.employee_code}})
+            </option>
+          </select>
+        </div>
+
+        <!-- 選択中の都道府県ID表示 -->
+        <div class="form-group">
+          <ng-container *ngIf="selectedPrefectureId; else noDept">
+            <span style="color:#1976d2; font-weight:500;">選択中の都道府県ID：{{ selectedPrefectureId }}</span>
+          </ng-container>
+          <ng-template #noDept>
+            <span style="color:#d32f2f; font-weight:500;">事業所（部署）が設定されていません</span>
+          </ng-template>
+        </div>
+
+        <div class="form-group">
+          <label for="yearSelect">対象年度</label>
+          <select id="yearSelect" [(ngModel)]="selectedYear" name="yearSelect" required>
+            <option *ngFor="let y of yearOptions" [value]="y">{{ y }}年度</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="button-row">
+          <button type="button" (click)="calculateInsurance()">
+            <mat-icon>calculate</mat-icon>
+            計算実行
+          </button>
+        </div>
+      </div>
+
+      <div class="section" *ngIf="calculationResult.total > 0">
+        <!-- 計算根拠の表示を追加 -->
+        <div class="calculation-summary" style="margin-bottom: 1rem; color: #1976d2; font-weight: 500;">
+          <div>直近3ヶ月平均額：{{ avgLast3 | number }}円</div>
+          <div>等級：{{ selectedGrade !== null ? selectedGrade : '-' }}</div>
+          <div>標準報酬月額：{{ selectedGradeInfo?.standardSalary | number }}円</div>
+        </div>
+        <h3>計算結果</h3>
+        <div class="table-container">
+          <table class="premium-table">
+            <thead>
+              <tr>
+                <th>項目</th>
+                <th>金額</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>一般保険料（全額）</td>
+                <td>{{ calculationResult.ippanFull | number }}円</td>
+              </tr>
+              <tr>
+                <td>一般保険料（折半額）</td>
+                <td>{{ calculationResult.ippanHalf | number }}円</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </ng-container>
+
+    <ng-container *ngIf="selectedTab === 'ratio'">
+      <h2>負担比率</h2>
+      <div class="section">
+        <p>負担比率セクション（ここに比率設定等を追加）</p>
+      </div>
+    </ng-container>
+
+    <ng-container *ngIf="selectedTab === 'master'">
+      <h2>マスタ管理</h2>
+      <div class="section">
+        <p>マスタ管理セクション（ここにマスタ編集UI等を追加）</p>
+      </div>
+    </ng-container>
+
+    <ng-container *ngIf="selectedTab === 'history'">
+      <h2>履歴閲覧</h2>
+      <div class="section">
+        <p>履歴閲覧セクション（ここに履歴一覧等を追加）</p>
+      </div>
+    </ng-container>
+
+    <ng-container *ngIf="selectedTab === 'table'">
+      <h2>保険料表管理</h2>
+      <!-- Excelファイルインポート -->
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="mb-0">保険料表インポート</h5>
+        </div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label for="importYear" class="form-label">年度</label>
+            <select id="importYear" class="form-select" [(ngModel)]="selectedYear">
+              <option *ngFor="let y of yearOptions" [value]="y">{{ y }}年度</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="excelFile" class="form-label">協会けんぽExcelファイル</label>
+            <input type="file" class="form-control" id="excelFile" accept=".xlsx,.xls" (change)="onFileInputChange($event)" [disabled]="isImporting">
+          </div>
+          <div class="mb-3" *ngIf="sheetNames.length > 0">
+            <label for="sheetSelect" class="form-label">シート選択（都道府県）</label>
+            <select id="sheetSelect" class="form-select" [(ngModel)]="selectedSheetName">
+              <option *ngFor="let name of sheetNames" [value]="name">{{ name }}</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <button class="btn btn-primary" (click)="onImportClick()" [disabled]="!selectedFile || !selectedSheetName || isImporting">インポート</button>
+          </div>
+          <div *ngIf="importError" class="alert alert-danger">
+            {{ importError }}
+          </div>
+          <div *ngIf="isImporting" class="alert alert-info">
+            インポート中...
+          </div>
+        </div>
+      </div>
+
+      <!-- 保険料表エクスポート -->
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="mb-0">保険料表エクスポート</h5>
+        </div>
+        <div class="card-body">
+          <button class="btn btn-primary" (click)="exportToExcel()" [disabled]="!selectedPrefectureId">
+            エクスポート
+          </button>
+        </div>
+      </div>
+
+      <!-- 保険料表表示 -->
+      <div class="card" *ngIf="premiums">
+        <div class="card-header">
+          <h5 class="mb-0">保険料表</h5>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="premium-table" *ngIf="premiums">
+              <thead>
+                <tr>
+                  <th>等級</th>
+                  <th>標準報酬月額</th>
+                  <th>報酬月額下限</th>
+                  <th>報酬月額上限</th>
+                  <th>一般保険料（全額）</th>
+                  <th>一般保険料（折半額）</th>
+                  <th>2号保険者（全額）</th>
+                  <th>2号保険者（折半額）</th>
+                  <th>厚生年金保険料（全額）</th>
+                  <th>厚生年金保険料（半額）</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let grade of premiums | keyvalue : sortByGrade">
+                  <td>{{ grade.key }}</td>
+                  <td>{{ grade.value.standardSalary | number }}</td>
+                  <td>{{ grade.value.salaryMin | number }}</td>
+                  <td>{{ grade.value.salaryMax | number }}</td>
+                  <td>{{ grade.value.ippan?.full | number }}</td>
+                  <td>{{ grade.value.ippan?.half | number }}</td>
+                  <td>{{ grade.value.tokutei?.full | number }}</td>
+                  <td>{{ grade.value.tokutei?.half | number }}</td>
+                  <td>{{ grade.value.kousei?.full | number }}</td>
+                  <td>{{ grade.value.kousei?.half | number }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </ng-container>
+  </div>
+</div>
