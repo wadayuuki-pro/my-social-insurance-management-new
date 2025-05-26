@@ -155,6 +155,9 @@ export class EmployeeManagementComponent implements OnInit {
   public isAuthReady$;
   public employeeInfo$;
 
+  showLeaveDates = false;
+  showNewLeaveDates = false;
+
   constructor(
     private auth: Auth,
     private firestore: Firestore,
@@ -183,7 +186,7 @@ export class EmployeeManagementComponent implements OnInit {
     this.detailForm = this.fb.group({});
     this.newEmployeeForm = this.fb.group({
       company_id: [''],
-      department_id: [''],
+      department_id: ['', Validators.required],
       employee_code: ['', Validators.required],
       last_name_kanji: ['', Validators.required],
       first_name_kanji: ['', Validators.required],
@@ -200,6 +203,8 @@ export class EmployeeManagementComponent implements OnInit {
       employment_type: [''],
       employment_start_date: [''],
       employment_end_date: [''],
+      leave_start_date: [''],
+      leave_end_date: [''],
       status: ['在籍中'],
       department: [''],
       work_category: [''],
@@ -217,7 +222,11 @@ export class EmployeeManagementComponent implements OnInit {
       scheduled_working_hours: [''],
       employment_contract_period: [''],
       expected_monthly_income: [''],
-      student_category: ['学生ではない']
+      student_category: ['学生ではない'],
+      expected_salary: [''],
+      auto_grade: [{value: '', disabled: true}],
+      auto_standard_salary: [{value: '', disabled: true}],
+      basic_pension_number: [''],
     });
     // 扶養者追加用フォーム初期化
     this.dependentForm = this.fb.group({
@@ -478,6 +487,15 @@ export class EmployeeManagementComponent implements OnInit {
     // 初期値も反映
     const pn = this.detailForm.get('pension_number')?.value;
     this.detailForm.get('pension_insurance_enrolled')?.setValue(pn && pn.trim() !== '' ? true : false, { emitEvent: false });
+    // expected_salary, auto_grade, auto_standard_salaryを追加
+    this.detailForm.addControl('expected_salary', this.fb.control(emp.expected_salary || ''));
+    this.detailForm.addControl('auto_grade', this.fb.control({value: '', disabled: true}));
+    this.detailForm.addControl('auto_standard_salary', this.fb.control({value: '', disabled: true}));
+    // expected_salaryの変更監視
+    this.detailForm.get('expected_salary')?.valueChanges.subscribe(val => {
+      this.judgeGradeAndStandardSalary(val, 'detail');
+    });
+    this.detailForm.addControl('basic_pension_number', this.fb.control(emp.basic_pension_number || ''));
     this.showDetailModal = true;
     this.detailSaveMessage = '';
   }
@@ -522,6 +540,36 @@ export class EmployeeManagementComponent implements OnInit {
         } else {
           saveData.pension_insurance_enrolled = false;
         }
+        // 保存前に等級・標準報酬月額を再取得
+        let auto_grade = saveData.auto_grade;
+        let auto_standard_salary = saveData.auto_standard_salary;
+        if (saveData.expected_salary && saveData.department_id) {
+          const depDoc = await getDocs(query(collection(this.firestore, 'departments'), where('department_id', '==', saveData.department_id), where('company_id', '==', this.companyId)));
+          let prefectureId = '';
+          if (!depDoc.empty) {
+            prefectureId = depDoc.docs[0].data()['prefecture_id'] || '';
+          }
+          if (prefectureId) {
+            // 年度は現在時刻から
+            const now = new Date();
+            const year = String(now.getFullYear());
+            const gradesCol = collection(this.firestore, 'prefectures', prefectureId, 'insurance_premiums', year, 'grades');
+            const gradesSnapshot = await getDocs(gradesCol);
+            const grades: { [key: string]: any } = {};
+            gradesSnapshot.forEach(doc => {
+              grades[doc.id] = doc.data();
+            });
+            for (const [gradeId, grade] of Object.entries(grades)) {
+              if (saveData.expected_salary >= grade.salaryMin && saveData.expected_salary < grade.salaryMax) {
+                auto_grade = gradeId;
+                auto_standard_salary = grade.standardSalary;
+                break;
+              }
+            }
+          }
+        }
+        saveData.auto_grade = auto_grade === undefined ? '' : auto_grade;
+        saveData.auto_standard_salary = auto_standard_salary === undefined ? '' : auto_standard_salary;
         await updateDoc(ref, saveData);
         this.detailSaveMessage = '保存しました';
         await this.loadEmployees();
@@ -731,12 +779,42 @@ export class EmployeeManagementComponent implements OnInit {
       this.newEmployeeForm.get('company_id')?.enable();
       // フォームの値を取得
       const formValue = this.newEmployeeForm.value;
+      // 保存前に等級・標準報酬月額を再取得
+      let auto_grade = formValue.auto_grade;
+      let auto_standard_salary = formValue.auto_standard_salary;
+      if (formValue.expected_salary && formValue.department_id) {
+        // 事業所IDから都道府県ID取得
+        const depDoc = await getDocs(query(collection(this.firestore, 'departments'), where('department_id', '==', formValue.department_id), where('company_id', '==', this.companyId)));
+        let prefectureId = '';
+        if (!depDoc.empty) {
+          prefectureId = depDoc.docs[0].data()['prefecture_id'] || '';
+        }
+        if (prefectureId) {
+          // 年度は現在時刻から
+          const now = new Date();
+          const year = String(now.getFullYear());
+          const gradesCol = collection(this.firestore, 'prefectures', prefectureId, 'insurance_premiums', year, 'grades');
+          const gradesSnapshot = await getDocs(gradesCol);
+          const grades: { [key: string]: any } = {};
+          gradesSnapshot.forEach(doc => {
+            grades[doc.id] = doc.data();
+          });
+          for (const [gradeId, grade] of Object.entries(grades)) {
+            if (formValue.expected_salary >= grade.salaryMin && formValue.expected_salary < grade.salaryMax) {
+              auto_grade = gradeId;
+              auto_standard_salary = grade.standardSalary;
+              break;
+            }
+          }
+        }
+      }
       // パスワードを自動生成
       const generatedPassword = this.generateRandomPassword(formValue.employee_code);
-      
       // Firestoreに従業員情報を保存（Auth登録はしない）
       const newEmployeeData = {
         ...formValue,
+        auto_grade: auto_grade === undefined ? '' : auto_grade,
+        auto_standard_salary: auto_standard_salary === undefined ? '' : auto_standard_salary,
         password: generatedPassword,
         health_insurance_enrolled: formValue.health_insurance_number ? true : false,
         pension_insurance_enrolled: formValue.pension_number ? true : false,
@@ -753,7 +831,6 @@ export class EmployeeManagementComponent implements OnInit {
       this.newEmployeeForm.get('company_id')?.disable();
       const employeesCol = collection(this.firestore, 'employees');
       await addDoc(employeesCol, newEmployeeData);
-      
       alert(`新規メンバーを追加しました。\n初期パスワード: ${generatedPassword}\n\n※このパスワードはこの画面でのみ表示されます。`);
       this.showNewEmployeeModal = false;
       await this.loadEmployees();
@@ -859,17 +936,8 @@ export class EmployeeManagementComponent implements OnInit {
 
   // 雇用形態変更時のハンドラ
   onEmploymentTypeChange() {
-    const type = this.newEmployeeForm.get('employment_type')?.value;
-    if (type === 'パート' || type === 'アルバイト') {
-      // 既存値をサブモーダルに反映
-      this.partTimeFieldsForm.patchValue({
-        scheduled_working_hours: this.newEmployeeForm.get('scheduled_working_hours')?.value || '',
-        employment_contract_period: this.newEmployeeForm.get('employment_contract_period')?.value || '',
-        expected_monthly_income: this.newEmployeeForm.get('expected_monthly_income')?.value || '',
-        student_category: this.newEmployeeForm.get('student_category')?.value || '学生ではない'
-      });
-      this.showPartTimeFieldsModal = true;
-    }
+    // 雇用形態の変更では日付表示を制御しない
+    this.showLeaveDates = false;
   }
 
   // サブモーダルの保存
@@ -881,5 +949,86 @@ export class EmployeeManagementComponent implements OnInit {
   // サブモーダルのキャンセル
   cancelPartTimeFields() {
     this.showPartTimeFieldsModal = false;
+  }
+
+  onNewEmploymentTypeChange() {
+    // 雇用形態の変更では日付表示を制御しない
+    this.showNewLeaveDates = false;
+  }
+
+  onStatusChange() {
+    const status = this.detailForm.get('status')?.value;
+    this.showLeaveDates = ['休職中', '産休中', '育休中'].includes(status);
+  }
+
+  onNewStatusChange() {
+    const status = this.newEmployeeForm.get('status')?.value;
+    this.showNewLeaveDates = ['休職中', '産休中', '育休中'].includes(status);
+  }
+
+  async judgeGradeAndStandardSalary(salary: number, mode: 'new' | 'detail') {
+    if (!salary || !this.companyId) {
+      if (mode === 'new') {
+        this.newEmployeeForm.patchValue({ auto_grade: '', auto_standard_salary: '' });
+      } else {
+        this.detailForm.patchValue({ auto_grade: '', auto_standard_salary: '' });
+      }
+      return;
+    }
+    // 会社IDから部署→都道府県IDを取得
+    let prefectureId = '';
+    if (mode === 'new') {
+      const depId = this.newEmployeeForm.get('department_id')?.value;
+      if (depId) {
+        const depDoc = await getDocs(query(collection(this.firestore, 'departments'), where('department_id', '==', depId), where('company_id', '==', this.companyId)));
+        if (!depDoc.empty) {
+          prefectureId = depDoc.docs[0].data()['prefecture_id'] || '';
+        }
+      }
+    } else {
+      const depId = this.detailForm.get('department_id')?.value;
+      if (depId) {
+        const depDoc = await getDocs(query(collection(this.firestore, 'departments'), where('department_id', '==', depId), where('company_id', '==', this.companyId)));
+        if (!depDoc.empty) {
+          prefectureId = depDoc.docs[0].data()['prefecture_id'] || '';
+        }
+      }
+    }
+    if (!prefectureId) {
+      if (mode === 'new') {
+        this.newEmployeeForm.patchValue({ auto_grade: '', auto_standard_salary: '' });
+      } else {
+        this.detailForm.patchValue({ auto_grade: '', auto_standard_salary: '' });
+      }
+      return;
+    }
+    // 年度は最新（今年）で取得
+    const now = new Date();
+    const year = String(now.getFullYear());
+    const gradesCol = collection(this.firestore, 'prefectures', prefectureId, 'insurance_premiums', year, 'grades');
+    const gradesSnapshot = await getDocs(gradesCol);
+    const grades: { [key: string]: any } = {};
+    gradesSnapshot.forEach(doc => {
+      grades[doc.id] = doc.data();
+    });
+    let found = false;
+    for (const [gradeId, grade] of Object.entries(grades)) {
+      if (salary >= grade.salaryMin && salary < grade.salaryMax) {
+        if (mode === 'new') {
+          this.newEmployeeForm.patchValue({ auto_grade: gradeId, auto_standard_salary: grade.standardSalary });
+        } else {
+          this.detailForm.patchValue({ auto_grade: gradeId, auto_standard_salary: grade.standardSalary });
+        }
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      if (mode === 'new') {
+        this.newEmployeeForm.patchValue({ auto_grade: '', auto_standard_salary: '' });
+      } else {
+        this.detailForm.patchValue({ auto_grade: '', auto_standard_salary: '' });
+      }
+    }
   }
 }

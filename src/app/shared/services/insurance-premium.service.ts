@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { Firestore, collection, doc, setDoc, getDocs, query, where } from '@angular/fire/firestore';
+import { Firestore, collection, doc, setDoc, getDocs, query, where, getDoc, orderBy } from '@angular/fire/firestore';
 import { InsurancePremium, PrefecturePremiums } from '../interfaces/insurance-premium.interface';
 import * as XLSX from 'xlsx';
 
@@ -97,12 +97,41 @@ export class InsurancePremiumService {
 
           const premiums: { [key: string]: any } = {};
 
+          // まず等級4(1)または4（1）の厚生年金保険料（全額・半額）を取得
+          let kouseiFull_4 = 0;
+          let kouseiHalf_4 = 0;
+          let found4 = false;
+          for (let i = 0; i < dataRows.length; i++) {
+            const row = dataRows[i];
+            const gradeId = String(row[gradeIdx]).trim();
+            if (gradeId === '4(1)' || gradeId === '4（1）') {
+              kouseiFull_4 = this.parseNumber(row[kouseiFullIdx]);
+              kouseiHalf_4 = this.parseNumber(row[kouseiHalfIdx]);
+              found4 = true;
+              break;
+            }
+          }
+
+          // 等級35(32)または35（32）の厚生年金保険料（全額・半額）を取得
+          let kouseiFull_35 = 0;
+          let kouseiHalf_35 = 0;
+          let found35 = false;
+          for (let i = 0; i < dataRows.length; i++) {
+            const row = dataRows[i];
+            const gradeId = String(row[gradeIdx]).trim();
+            if (gradeId === '35(32)' || gradeId === '35（32）') {
+              kouseiFull_35 = this.parseNumber(row[kouseiFullIdx]);
+              kouseiHalf_35 = this.parseNumber(row[kouseiHalfIdx]);
+              found35 = true;
+              break;
+            }
+          }
+
           for (let i = 0; i < dataRows.length; i++) {
             const row = dataRows[i];
             const gradeId = String(row[gradeIdx]).trim();
             const standardSalary = this.parseNumber(row[salaryIdx]);
             const salaryMin = this.parseNumber(row[minIdx]);
-            // salaryMax: E列が空欄なら次の行のC列（円以上）を参照
             let salaryMax = this.parseNumber(row[maxIdx]);
             if ((row[maxIdx] === null || row[maxIdx] === undefined || row[maxIdx] === '') && i + 1 < dataRows.length) {
               salaryMax = this.parseNumber(dataRows[i + 1][minIdx]);
@@ -111,9 +140,20 @@ export class InsurancePremiumService {
             const ippanHalf = this.parseNumber(row[ippanHalfIdx]);
             const tokuteiFull = this.parseNumber(row[tokuteiFullIdx]);
             const tokuteiHalf = this.parseNumber(row[tokuteiHalfIdx]);
-            const kouseiFull = this.parseNumber(row[kouseiFullIdx]);
-            const kouseiHalf = this.parseNumber(row[kouseiHalfIdx]);
-
+            let kouseiFull = this.parseNumber(row[kouseiFullIdx]);
+            let kouseiHalf = this.parseNumber(row[kouseiHalfIdx]);
+            // 等級1～3は等級4(1)または4（1）の値を必ずセット
+            if (["1", "2", "3"].includes(gradeId)) {
+              kouseiFull = kouseiFull_4;
+              kouseiHalf = kouseiHalf_4;
+            }
+            // 等級が36以上の場合は等級35(32)または35（32）の値をセット
+            const gradeNumMatch = gradeId.match(/^\d+/);
+            const gradeNum = gradeNumMatch ? parseInt(gradeNumMatch[0], 10) : 0;
+            if (gradeNum >= 36 && found35) {
+              kouseiFull = kouseiFull_35;
+              kouseiHalf = kouseiHalf_35;
+            }
             premiums[gradeId] = {
               standardSalary,
               salaryMin,
@@ -163,11 +203,11 @@ export class InsurancePremiumService {
       const premium = doc.data() as InsurancePremium;
       return {
         '等級': doc.id,
-        '標準報酬月額': premium.standardSalary,
+        '標準報酬月額': premium.standard_salary,
         '報酬月額下限': premium.salaryMin,
         '報酬月額上限': premium.salaryMax,
-        '一般保険料（全額）': premium.ippan.full,
-        '一般保険料（折半額）': premium.ippan.half
+        '一般保険料（全額）': premium.premiums.ippan.full,
+        '一般保険料（折半額）': premium.premiums.ippan.half
       };
     });
 
@@ -198,5 +238,72 @@ export class InsurancePremiumService {
     });
 
     return { premiums };
+  }
+
+  // 保険料計算結果を保存
+  async saveInsurancePremium(employeeId: string, premiumData: InsurancePremium): Promise<void> {
+    try {
+      const premiumRef = doc(
+        collection(this.firestore, 'employees', employeeId, 'insurance_premiums'),
+        premiumData.year_month
+      );
+
+      await setDoc(premiumRef, {
+        ...premiumData,
+        created_at: new Date(),
+        updated_at: new Date()
+      });
+    } catch (error) {
+      console.error('Error saving insurance premium:', error);
+      throw error;
+    }
+  }
+
+  // 保険料計算結果を取得
+  async getInsurancePremium(employeeId: string, yearMonth: string): Promise<InsurancePremium | null> {
+    try {
+      const premiumRef = doc(
+        collection(this.firestore, 'employees', employeeId, 'insurance_premiums'),
+        yearMonth
+      );
+      const premiumDoc = await getDoc(premiumRef);
+
+      if (premiumDoc.exists()) {
+        return premiumDoc.data() as InsurancePremium;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting insurance premium:', error);
+      throw error;
+    }
+  }
+
+  // 保険料計算結果の一覧を取得
+  async getInsurancePremiums(employeeId: string): Promise<InsurancePremium[]> {
+    try {
+      const premiumsCol = collection(this.firestore, 'employees', employeeId, 'insurance_premiums');
+      const q = query(premiumsCol, orderBy('year_month', 'desc'));
+      const snapshot = await getDocs(q);
+
+      return snapshot.docs.map(doc => doc.data() as InsurancePremium);
+    } catch (error) {
+      console.error('Error getting insurance premiums:', error);
+      throw error;
+    }
+  }
+
+  // 事業所の負担比率集計を保存
+  async saveDepartmentBurdenRatio(departmentId: string, yearMonth: string, data: any): Promise<void> {
+    try {
+      const ref = doc(collection(this.firestore, 'departments', departmentId, 'burden_ratios'), yearMonth);
+      await setDoc(ref, {
+        ...data,
+        created_at: new Date(),
+        updated_at: new Date()
+      });
+    } catch (error) {
+      console.error('Error saving department burden ratio:', error);
+      throw error;
+    }
   }
 } 

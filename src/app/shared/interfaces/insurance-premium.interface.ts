@@ -9,10 +9,38 @@ export interface PremiumAmount {
 }
 
 export interface InsurancePremium {
+  year_month: string;
+  grade: string;
+  standard_salary: number;
   standardSalary: number;
   salaryMin: number;
   salaryMax: number;
-  ippan: { full: number; half: number };
+  age: number;
+  is_nursing_insurance_period: boolean;
+  birth_date: string;
+  premiums: {
+    ippan: {
+      full: number;
+      half: number;
+      is_applicable: boolean;
+    };
+    tokutei: {
+      full: number;
+      half: number;
+      is_applicable: boolean;
+    };
+    kousei: {
+      full: number;
+      half: number;
+    };
+  };
+  ippan: {
+    full: number;
+    half: number;
+  };
+  total: number;
+  created_at: Date;
+  updated_at: Date;
 }
 
 export interface PremiumGrade {
