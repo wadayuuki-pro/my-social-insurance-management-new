@@ -227,6 +227,12 @@ export class EmployeeManagementComponent implements OnInit {
       auto_grade: [{value: '', disabled: true}],
       auto_standard_salary: [{value: '', disabled: true}],
       basic_pension_number: [''],
+      health_insurance_enrollment_date: [''],
+      pension_insurance_enrollment_date: [''],
+      health_insurance_withdrawal_date: [''],
+      pension_insurance_withdrawal_date: [''],
+      created_at: [new Date()],
+      updated_at: [new Date()]
     });
     // 扶養者追加用フォーム初期化
     this.dependentForm = this.fb.group({
@@ -1058,6 +1064,46 @@ export class EmployeeManagementComponent implements OnInit {
       } else {
         this.detailForm.patchValue({ auto_grade: '', auto_standard_salary: '' });
       }
+    }
+  }
+
+  // 健康保険番号入力時の処理
+  onHealthInsuranceNumberChange() {
+    const healthInsuranceNumber = this.detailForm.get('health_insurance_number')?.value;
+    if (healthInsuranceNumber) {
+      this.detailForm.patchValue({
+        health_insurance_enrolled: true
+      });
+    }
+  }
+
+  // 厚生年金番号入力時の処理
+  onPensionNumberChange() {
+    const pensionNumber = this.detailForm.get('pension_number')?.value;
+    if (pensionNumber) {
+      this.detailForm.patchValue({
+        pension_insurance_enrolled: true
+      });
+    }
+  }
+
+  // 新規従業員用の健康保険番号入力時の処理
+  onNewHealthInsuranceNumberChange() {
+    const healthInsuranceNumber = this.newEmployeeForm.get('health_insurance_number')?.value;
+    if (healthInsuranceNumber) {
+      this.newEmployeeForm.patchValue({
+        health_insurance_enrolled: true
+      });
+    }
+  }
+
+  // 新規従業員用の厚生年金番号入力時の処理
+  onNewPensionNumberChange() {
+    const pensionNumber = this.newEmployeeForm.get('pension_number')?.value;
+    if (pensionNumber) {
+      this.newEmployeeForm.patchValue({
+        pension_insurance_enrolled: true
+      });
     }
   }
 }

@@ -199,6 +199,10 @@ export class VendorPageComponent {
         auto_standard_salary: '',
         expected_salary: '',
         basic_pension_number: '',
+        health_insurance_enrollment_date: '',
+        pension_insurance_enrollment_date: '',
+        health_insurance_withdrawal_date: '',
+        pension_insurance_withdrawal_date: '',
         created_at: new Date(),
         updated_at: new Date()
       };

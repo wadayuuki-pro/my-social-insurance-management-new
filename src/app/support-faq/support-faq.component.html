@@ -1,17 +1,82 @@
-<div style='padding:2rem;'>
-  <h2>サポート・FAQページ</h2>
-  <div style="margin-bottom:2rem;">
-    <h3>よくあるご質問（FAQ）</h3>
-    <ul style="line-height:2;">
-      <li><strong>Q. パスワードを忘れた場合は？</strong><br>ログイン画面の「パスワードを忘れた方はこちら」から再設定できます。</li>
-      <li><strong>Q. 社員情報を一括で登録できますか？</strong><br>従業員管理ページの「CSVインポート」機能をご利用ください。</li>
-      <li><strong>Q. 保険料率の年度更新はどうすればいいですか？</strong><br>マスタ設定ページから料率表をインポートしてください。</li>
-      <li><strong>Q. サポートへの問い合わせ方法は？</strong><br>下記のサポート窓口までご連絡ください。</li>
-    </ul>
+<div class="support-faq-container">
+  <h2><span style="vertical-align: middle; color: #1976d2;">💡</span> サポート・FAQページ</h2>
+
+  <!-- タブUI -->
+  <div class="tab-header">
+    <button [class.active]="selectedTab === 'faq'" (click)="selectedTab = 'faq'">❓ FAQ</button>
+    <button [class.active]="selectedTab === 'manual'" (click)="selectedTab = 'manual'">📄 操作マニュアル</button>
+    <button [class.active]="selectedTab === 'inquiry'" (click)="selectedTab = 'inquiry'">📩 問い合わせフォーム</button>
   </div>
-  <div>
-    <h3>サポート窓口</h3>
-    <p>メール: <a href="mailto:support&#64;example.com">support&#64;example.com</a></p>
-    <p>電話: 0120-123-456（平日9:00～18:00）</p>
+
+  <!-- ❓ FAQカテゴリ別表示 -->
+  <div *ngIf="selectedTab === 'faq'" class="faq-section">
+    <h3><span style="vertical-align: middle; color: #43a047;">❓</span> よくある質問（FAQ）</h3>
+    <div class="faq-category-tabs">
+      <button *ngFor="let cat of faqCategories; let i = index" class="faq-tab" [class.active]="selectedCategory === i" (click)="selectCategory(i)">{{ cat.name }}</button>
+    </div>
+    <div class="faq-list">
+      <div class="faq-title-list">
+        <div *ngFor="let item of faqCategories[selectedCategory].items; let j = index" class="faq-title" [class.active]="selectedQuestionIndex === j" (click)="selectQuestion(j)">
+          Q. {{ item.question }}
+        </div>
+      </div>
+      <div class="faq-detail-card">
+        <div class="faq-q"><strong>Q. {{ faqCategories[selectedCategory].items[selectedQuestionIndex].question }}</strong></div>
+        <div class="faq-a">{{ faqCategories[selectedCategory].items[selectedQuestionIndex].answer }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 📄 操作マニュアル -->
+  <div *ngIf="selectedTab === 'manual'" class="manual-section">
+    <h3><span style="vertical-align: middle; color: #1976d2;">📄</span> 操作マニュアル</h3>
+    <div class="manual-list">
+      <div class="manual-card">
+        <div class="manual-title">利用者向けマニュアル</div>
+        <button class="manual-btn">閲覧</button>
+        <button class="manual-btn">ダウンロード</button>
+      </div>
+      <div class="manual-card admin-only">
+        <div class="manual-title">管理者用マニュアル（PDFアップロード）</div>
+        <input type="file" accept=".pdf" class="manual-upload" />
+        <button class="manual-btn">アップロード</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 📩 問い合わせフォーム -->
+  <div *ngIf="selectedTab === 'inquiry'" class="inquiry-section">
+    <h3><span style="vertical-align: middle; color: #1976d2;">📩</span> お問い合わせフォーム</h3>
+    <form class="inquiry-form">
+      <div class="form-row">
+        <label for="inquiryName"><span style="color:#d32f2f;">*</span> 氏名</label>
+        <input id="inquiryName" type="text" placeholder="例：山田 太郎" required />
+      </div>
+      <div class="form-row">
+        <label for="inquiryEmail"><span style="color:#d32f2f;">*</span> メールアドレス</label>
+        <input id="inquiryEmail" type="email" placeholder="例：example@example.com" required />
+      </div>
+      <div class="form-row">
+        <label for="inquiryType"><span style="color:#d32f2f;">*</span> 問い合わせ種別</label>
+        <select id="inquiryType" required>
+          <option value="">選択してください</option>
+          <option>質問</option>
+          <option>不具合報告</option>
+          <option>要望</option>
+          <option>その他</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="inquiryContent"><span style="color:#d32f2f;">*</span> 問い合わせ内容</label>
+        <textarea id="inquiryContent" rows="5" placeholder="ご質問・ご要望・不具合内容などをご記入ください" required></textarea>
+      </div>
+      
+      <button type="submit" class="inquiry-btn" style="margin-top:1em; min-width: 120px;">送信する</button>
+      <div class="inquiry-success-msg" style="display:none; margin-top:1em;">送信が完了しました。自動返信メールをお送りしました。<br>ご入力いただいたメールアドレス宛にご連絡いたします。</div>
+    </form>
+    <div class="inquiry-note" style="margin-top:1.5em; color:#888; font-size:0.98em;">
+      <span style="color:#d32f2f;">*</span>は必須項目です。<br>
+      お問い合わせ内容によってはご返信までお時間をいただく場合がございます。
+    </div>
   </div>
 </div> 

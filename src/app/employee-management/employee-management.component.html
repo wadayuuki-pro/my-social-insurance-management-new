@@ -167,8 +167,8 @@
           <th style="min-width: 150px;">氏名</th>
           <th style="min-width: 150px;">所属部署/拠点</th>
           <th style="min-width: 120px;">勤務開始日</th>
-          <th style="min-width: 120px;">健康保険加入状況</th>
-          <th style="min-width: 120px;">厚生年金加入状況</th>
+          <th style="min-width: 50px;">健康保険加入状況</th>
+          <th style="min-width: 50px;">厚生年金加入状況</th>
           <th style="min-width: 120px;">扶養家族の有無</th>
           <th style="min-width: 100px;">状態</th>
           <th style="min-width: 120px;">最終更新日</th>
@@ -232,9 +232,25 @@
               </ng-container>
               <ng-container *ngSwitchCase="'health_insurance_enrolled'">
                 <input [value]="newEmployeeForm.get(field)?.value ? '有' : '無'" disabled />
+                <div class="detail-row" *ngIf="newEmployeeForm.get(field)?.value">
+                  <label>健康保険加入日</label>
+                  <input type="date" formControlName="health_insurance_enrollment_date" />
+                </div>
+                <div class="detail-row" *ngIf="newEmployeeForm.get(field)?.value">
+                  <label>健康保険脱退日</label>
+                  <input type="date" formControlName="health_insurance_withdrawal_date" />
+                </div>
               </ng-container>
               <ng-container *ngSwitchCase="'pension_insurance_enrolled'">
                 <input [value]="newEmployeeForm.get(field)?.value ? '有' : '無'" disabled />
+                <div class="detail-row" *ngIf="newEmployeeForm.get(field)?.value">
+                  <label>厚生年金加入日</label>
+                  <input type="date" formControlName="pension_insurance_enrollment_date" />
+                </div>
+                <div class="detail-row" *ngIf="newEmployeeForm.get(field)?.value">
+                  <label>厚生年金脱退日</label>
+                  <input type="date" formControlName="pension_insurance_withdrawal_date" />
+                </div>
               </ng-container>
               <ng-container *ngSwitchCase="'date_of_birth'">
                 <input [formControlName]="field" type="date" [placeholder]="employeeFieldPlaceholders[field] || ''" />
@@ -306,8 +322,11 @@
                   </div>
                 </ng-container>
               </ng-container>
+              <ng-container *ngSwitchCase="'health_insurance_number'">
+                <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" (input)="onNewHealthInsuranceNumberChange()" />
+              </ng-container>
               <ng-container *ngSwitchCase="'pension_number'">
-                <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" />
+                <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" (input)="onNewPensionNumberChange()" />
                 <div class="detail-row">
                   <label>基礎年金番号</label>
                   <input formControlName="basic_pension_number" placeholder="例：1234567890" />
@@ -427,9 +446,25 @@
                 </ng-container>
                 <ng-container *ngSwitchCase="'health_insurance_enrolled'">
                   <input [value]="detailForm.get(field)?.value ? '有' : '無'" disabled />
+                  <div class="detail-row" *ngIf="detailForm.get(field)?.value">
+                    <label>健康保険加入日</label>
+                    <input type="date" formControlName="health_insurance_enrollment_date" />
+                  </div>
+                  <div class="detail-row" *ngIf="detailForm.get(field)?.value">
+                    <label>健康保険脱退日</label>
+                    <input type="date" formControlName="health_insurance_withdrawal_date" />
+                  </div>
                 </ng-container>
                 <ng-container *ngSwitchCase="'pension_insurance_enrolled'">
                   <input [value]="detailForm.get(field)?.value ? '有' : '無'" disabled />
+                  <div class="detail-row" *ngIf="detailForm.get(field)?.value">
+                    <label>厚生年金加入日</label>
+                    <input type="date" formControlName="pension_insurance_enrollment_date" />
+                  </div>
+                  <div class="detail-row" *ngIf="detailForm.get(field)?.value">
+                    <label>厚生年金脱退日</label>
+                    <input type="date" formControlName="pension_insurance_withdrawal_date" />
+                  </div>
                 </ng-container>
                 <ng-container *ngSwitchCase="'date_of_birth'">
                   <input [formControlName]="field" type="date" [placeholder]="employeeFieldPlaceholders[field] || ''" />
@@ -501,8 +536,11 @@
                     </div>
                   </ng-container>
                 </ng-container>
+                <ng-container *ngSwitchCase="'health_insurance_number'">
+                  <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" (input)="onHealthInsuranceNumberChange()" />
+                </ng-container>
                 <ng-container *ngSwitchCase="'pension_number'">
-                  <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" />
+                  <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" (input)="onPensionNumberChange()" />
                   <div class="detail-row">
                     <label>基礎年金番号</label>
                     <input formControlName="basic_pension_number" placeholder="例：1234567890" />

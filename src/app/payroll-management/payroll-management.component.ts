@@ -466,8 +466,8 @@ export class PayrollManagementComponent implements OnInit {
   // その他手当の合計を計算
   getOtherAllowances(salary: RegisteredSalary): number {
     if (!salary || !salary.details) return 0;
-    // 基本給・残業手当・通勤手当以外
-    const excludeTypes = ['base', 'overtime', 'commuting', '基本給', '残業手当', '通勤手当'];
+    // 基本給・残業手当・通勤手当・賞与以外
+    const excludeTypes = ['base', 'overtime', 'commuting', 'bonus', '基本給', '残業手当', '通勤手当', '賞与'];
     return salary.details
       .filter(d => !excludeTypes.includes(d.type))
       .reduce((sum, d) => sum + (d.amount || 0), 0);

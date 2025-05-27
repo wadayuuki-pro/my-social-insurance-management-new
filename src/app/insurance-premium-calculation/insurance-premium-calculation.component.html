@@ -33,9 +33,9 @@
       <h2>保険料計算</h2>
       <div class="section">
         <div class="form-group">
-          <label for="department">事業所（部署）</label>
-          <select id="department" [(ngModel)]="selectedDepartmentId" name="department" (change)="onDepartmentChange()">
-            <option value="">全ての事業所</option>
+          <label for="department">事業所（部署）<span style="color: #d32f2f;">*</span></label>
+          <select id="department" [(ngModel)]="selectedDepartmentId" name="department" (change)="onDepartmentChange()" required>
+            <option value="">事業所を選択してください</option>
             <option *ngFor="let dept of departments" [value]="dept.id">{{ dept.name }}</option>
           </select>
         </div>
@@ -45,9 +45,9 @@
         </div>
 
         <div class="form-group">
-          <label for="employee">従業員</label>
+          <label for="employee">従業員<span style="color: #d32f2f;">*</span></label>
           <select id="employee" [(ngModel)]="selectedEmployeeId" name="employee" (change)="onEmployeeSelect()" required>
-            <option value="">選択してください</option>
+            <option value="">従業員を選択してください</option>
             <option *ngFor="let emp of filteredEmployees" [value]="emp.id">
               {{emp.last_name_kanji}}{{emp.first_name_kanji}} ({{emp.employee_code}})
             </option>
@@ -77,13 +77,27 @@
             <option *ngFor="let m of monthOptions" [value]="m">{{ m }}月</option>
           </select>
         </div>
+
+        <div class="form-group" *ngIf="selectedEmployeeId">
+          <label>賞与額</label>
+          <div *ngIf="hasBonus" style="color: #1976d2; font-weight: 500;">
+            {{ bonusAmount | number }}円
+          </div>
+          <div *ngIf="!hasBonus" style="color: #d32f2f; font-weight: 500;">
+            賞与はありません
+          </div>
+        </div>
       </div>
 
       <div class="section">
         <div class="button-row">
-          <button type="button" (click)="calculateInsurance()">
+          <button type="button" (click)="calculateInsurance()" [disabled]="!selectedDepartmentId || !selectedEmployeeId">
             <mat-icon>calculate</mat-icon>
             計算実行
+          </button>
+          <button type="button" (click)="calculateBonusInsurance()" [disabled]="!selectedDepartmentId || !selectedEmployeeId" style="margin-left: 1rem; background: #ff9800; color: white;">
+            <mat-icon>payments</mat-icon>
+            賞与計算実行
           </button>
           <button type="button" (click)="toggleRoundingPattern()" style="margin-left: 1rem; background: #1976d2; color: white;">
             <mat-icon>swap_horiz</mat-icon>
@@ -98,13 +112,14 @@
         </div>
       </div>
 
-      <div class="section" *ngIf="calculationResult.total > 0">
+      <div class="section" *ngIf="calculationResult.total > 0 || bonusCalculationResult.total > 0">
         <!-- 計算根拠の表示を追加 -->
         <div class="calculation-summary" style="margin-bottom: 1rem; color: #1976d2; font-weight: 500;">
           <div>対象年月：{{ selectedYear }}年{{ selectedMonth }}月</div>
           <div>等級：{{ selectedGrade !== null ? selectedGrade : '-' }}</div>
           <div>標準報酬月額：{{ selectedGradeInfo?.standardSalary | number }}円</div>
           <div>年齢：{{ selectedEmployeeAge !== null ? selectedEmployeeAge : '-' }}歳</div>
+          <div *ngIf="isBonusCalculation">賞与額：{{ bonusAmount | number }}円</div>
         </div>
         <h3>計算結果</h3>
         <div class="table-container">
@@ -116,30 +131,58 @@
               </tr>
             </thead>
             <tbody>
-              <tr *ngIf="!isNursingInsurancePeriod()">
-                <td>健康保険料（2号以外）（全額）</td>
-                <td>{{ calculationResult.ippanFull | number }}円</td>
-              </tr>
-              <tr *ngIf="!isNursingInsurancePeriod()">
-                <td>健康保険料（2号以外）（半額）</td>
-                <td>{{ displayIppanHalf | number }}円</td>
-              </tr>
-              <tr *ngIf="isNursingInsurancePeriod()">
-                <td>健康保険料（2号）（全額）</td>
-                <td>{{ selectedGradeInfo?.tokutei?.full | number }}円</td>
-              </tr>
-              <tr *ngIf="isNursingInsurancePeriod()">
-                <td>健康保険料（2号）（半額）</td>
-                <td>{{ displayTokuteiHalf | number }}円</td>
-              </tr>
-              <tr>
-                <td>厚生年金保険料（全額）</td>
-                <td>{{ selectedGradeInfo?.kousei?.full | number }}円</td>
-              </tr>
-              <tr>
-                <td>厚生年金保険料（半額）</td>
-                <td>{{ displayKouseiHalf | number }}円</td>
-              </tr>
+              <ng-container *ngIf="!isBonusCalculation">
+                <tr *ngIf="!isNursingInsurancePeriod()">
+                  <td>健康保険料（2号以外）（全額）</td>
+                  <td>{{ calculationResult.ippanFull | number }}円</td>
+                </tr>
+                <tr *ngIf="!isNursingInsurancePeriod()">
+                  <td>健康保険料（2号以外）（半額）</td>
+                  <td>{{ displayIppanHalf | number }}円</td>
+                </tr>
+                <tr *ngIf="isNursingInsurancePeriod()">
+                  <td>健康保険料（2号）（全額）</td>
+                  <td>{{ selectedGradeInfo?.tokutei?.full | number }}円</td>
+                </tr>
+                <tr *ngIf="isNursingInsurancePeriod()">
+                  <td>健康保険料（2号）（半額）</td>
+                  <td>{{ displayTokuteiHalf | number }}円</td>
+                </tr>
+                <tr>
+                  <td>厚生年金保険料（全額）</td>
+                  <td>{{ selectedGradeInfo?.kousei?.full | number }}円</td>
+                </tr>
+                <tr>
+                  <td>厚生年金保険料（半額）</td>
+                  <td>{{ displayKouseiHalf | number }}円</td>
+                </tr>
+              </ng-container>
+              <ng-container *ngIf="isBonusCalculation">
+                <tr *ngIf="!isNursingInsurancePeriod()">
+                  <td>賞与健康保険料（2号以外）（全額）</td>
+                  <td>{{ bonusCalculationResult.ippanFull | number }}円</td>
+                </tr>
+                <tr *ngIf="!isNursingInsurancePeriod()">
+                  <td>賞与健康保険料（2号以外）（半額）</td>
+                  <td>{{ bonusCalculationResult.ippanHalf | number }}円</td>
+                </tr>
+                <tr *ngIf="isNursingInsurancePeriod()">
+                  <td>賞与健康保険料（2号）（全額）</td>
+                  <td>{{ selectedGradeInfo?.tokutei?.full | number }}円</td>
+                </tr>
+                <tr *ngIf="isNursingInsurancePeriod()">
+                  <td>賞与健康保険料（2号）（半額）</td>
+                  <td>{{ selectedGradeInfo?.tokutei?.half | number }}円</td>
+                </tr>
+                <tr>
+                  <td>賞与厚生年金保険料（全額）</td>
+                  <td>{{ selectedGradeInfo?.kousei?.full | number }}円</td>
+                </tr>
+                <tr>
+                  <td>賞与厚生年金保険料（半額）</td>
+                  <td>{{ selectedGradeInfo?.kousei?.half | number }}円</td>
+                </tr>
+              </ng-container>
             </tbody>
           </table>
         </div>
@@ -206,6 +249,8 @@
                 <th>氏名</th>
                 <th>健康保険料（従業員負担）</th>
                 <th>健康保険料（会社負担）</th>
+                <th>健康保険料（2号）（従業員負担）</th>
+                <th>健康保険料（2号）（会社負担）</th>
                 <th>厚生年金保険料（従業員負担）</th>
                 <th>厚生年金保険料（会社負担）</th>
                 <th>従業員負担合計</th>
@@ -216,10 +261,12 @@
             <tbody>
               <tr *ngFor="let row of employeePremiumSummaries">
                 <td>{{ row.name }}</td>
-                <td>{{ row.ippanEmployee | number }}</td>
-                <td>{{ row.ippanCompany | number }}</td>
-                <td>{{ row.kouseiEmployee | number }}</td>
-                <td>{{ row.kouseiCompany | number }}</td>
+                <td>{{ row.ippanEmployee > 0 ? (row.ippanEmployee | number) : '' }}</td>
+                <td>{{ row.ippanCompany > 0 ? (row.ippanCompany | number) : '' }}</td>
+                <td>{{ row.tokuteiEmployee > 0 ? (row.tokuteiEmployee | number) : '' }}</td>
+                <td>{{ row.tokuteiCompany > 0 ? (row.tokuteiCompany | number) : '' }}</td>
+                <td>{{ row.kouseiEmployee > 0 ? (row.kouseiEmployee | number) : '' }}</td>
+                <td>{{ row.kouseiCompany > 0 ? (row.kouseiCompany | number) : '' }}</td>
                 <td>{{ row.totalEmployee | number }}</td>
                 <td>{{ row.totalCompany | number }}</td>
                 <td>{{ row.total | number }}</td>

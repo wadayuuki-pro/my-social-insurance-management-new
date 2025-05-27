@@ -23,6 +23,7 @@ export interface InsurancePremium {
       full: number;
       half: number;
       is_applicable: boolean;
+      is_initial: boolean;
     };
     tokutei: {
       full: number;
@@ -30,6 +31,11 @@ export interface InsurancePremium {
       is_applicable: boolean;
     };
     kousei: {
+      full: number;
+      half: number;
+      is_applicable: boolean;
+    };
+    kaigo: {
       full: number;
       half: number;
       is_applicable: boolean;

@@ -103,6 +103,7 @@
               <th>基本給</th>
               <th>残業手当</th>
               <th>通勤手当</th>
+              <th>賞与</th>
               <th>その他手当</th>
               <th>総支給額</th>
               <th>課税対象額</th>
@@ -117,6 +118,7 @@
               <td>{{ formatAmount(getDetailAmount(salary, 'base')) }}円</td>
               <td>{{ formatAmount(getDetailAmount(salary, 'overtime')) }}円</td>
               <td>{{ formatAmount(getDetailAmount(salary, 'commuting')) }}円</td>
+              <td>{{ formatAmount(getDetailAmount(salary, 'bonus')) }}円</td>
               <td>{{ formatAmount(getOtherAllowances(salary)) }}円</td>
               <td>{{ formatAmount(salary.total_amount) }}円</td>
               <td>{{ formatAmount(salary.taxable_amount) }}円</td>
