@@ -16,9 +16,10 @@ import * as XLSX from 'xlsx';
 import { AuthService } from '../shared/services/auth.service';
 import { switchMap, map } from 'rxjs/operators';
 import { of, from } from 'rxjs';
-import { collection, query, where, getDocs, orderBy, doc, getDoc, limit } from '@angular/fire/firestore';
+import { collection, query, where, getDocs, orderBy, doc, getDoc, limit, setDoc } from '@angular/fire/firestore';
 import { Firestore } from '@angular/fire/firestore';
 import { InsurancePremium } from '../shared/interfaces/insurance-premium.interface';
+import Decimal from 'decimal.js';
 
 // 従業員の型定義
 interface Employee {
@@ -67,6 +68,11 @@ interface EmployeePremiumSummary {
   totalEmployee: number;
   totalCompany: number;
   total: number;
+}
+
+// 都道府県の型
+interface Prefecture {
+  id: string;
 }
 
 @Component({
@@ -156,6 +162,25 @@ export class InsurancePremiumCalculationComponent implements OnInit {
   // 四捨五入パターン: 'round'（標準） or 'custom'（0.5未満切り捨て、0.5以上切り上げ）
   roundingPattern: 'round' | 'custom' = 'round';
 
+  // マスタ管理用
+  prefectures: Prefecture[] = [];
+  selectedMasterPrefectureId: string = '';
+  selectedMasterYear: string = '';
+
+  // マスタ管理用: 取得したgradesデータ
+  masterGrades: any = null;
+  isLoadingMasterGrades: boolean = false;
+  masterGradesError: string | null = null;
+
+  isEditMode = false;
+  editGrades: any = {};
+
+  // 履歴閲覧タブ用
+  selectedHistoryYear: string = '';
+  selectedHistoryPrefectureId: string = '';
+  historyPrefectureRates: any = null;
+  historyPrefectureRatesError: string | null = null;
+
   constructor(
     private insurancePremiumService: InsurancePremiumService,
     private authService: AuthService,
@@ -207,10 +232,12 @@ export class InsurancePremiumCalculationComponent implements OnInit {
             await this.loadDepartments();
             await this.loadEmployees();
             await this.loadEmployeePremiumSummaries();
+            await this.loadPrefectures();
           }
         });
       }
     });
+    this.selectedMasterYear = this.yearOptions[0];
   }
 
   // 事業所（部署）一覧を取得
@@ -565,12 +592,9 @@ export class InsurancePremiumCalculationComponent implements OnInit {
           },
           kousei: {
             full: this.selectedGradeInfo.kousei?.full || 0,
-            half: this.applyRounding(this.selectedGradeInfo.kousei?.half || 0)
+            half: this.applyRounding(this.selectedGradeInfo.kousei?.half || 0),
+            is_applicable: true
           }
-        },
-        ippan: {
-          full: this.selectedGradeInfo.ippan?.full || 0,
-          half: this.applyRounding(this.selectedGradeInfo.ippan?.half || 0)
         },
         total: this.calculationResult.total,
         created_at: new Date(),
@@ -739,5 +763,147 @@ export class InsurancePremiumCalculationComponent implements OnInit {
     } catch (error) {
       alert('保存中にエラーが発生しました');
     }
+  }
+
+  // 都道府県一覧を取得
+  async loadPrefectures() {
+    this.prefectures = [
+      { id: '北海道' },
+      { id: '青森' },
+      { id: '岩手' },
+      { id: '宮城' },
+      { id: '秋田' },
+      { id: '山形' },
+      { id: '福島' },
+      { id: '茨城' },
+      { id: '栃木' },
+      { id: '群馬' },
+      { id: '埼玉' },
+      { id: '千葉' },
+      { id: '東京' },
+      { id: '神奈川' },
+      { id: '新潟' },
+      { id: '富山' },
+      { id: '石川' },
+      { id: '福井' },
+      { id: '山梨' },
+      { id: '長野' },
+      { id: '岐阜' },
+      { id: '静岡' },
+      { id: '愛知' },
+      { id: '三重' },
+      { id: '滋賀' },
+      { id: '京都' },
+      { id: '大阪' },
+      { id: '兵庫' },
+      { id: '奈良' },
+      { id: '和歌山' },
+      { id: '鳥取' },
+      { id: '島根' },
+      { id: '岡山' },
+      { id: '広島' },
+      { id: '山口' },
+      { id: '徳島' },
+      { id: '香川' },
+      { id: '愛媛' },
+      { id: '高知' },
+      { id: '福岡' },
+      { id: '佐賀' },
+      { id: '長崎' },
+      { id: '熊本' },
+      { id: '大分' },
+      { id: '宮崎' },
+      { id: '鹿児島' },
+      { id: '沖縄' }
+    ];
+    if (this.prefectures.length > 0 && !this.selectedMasterPrefectureId) {
+      this.selectedMasterPrefectureId = this.prefectures[0].id;
+    }
+  }
+
+  // 年度・都道府県選択時にデータ取得
+  async onMasterSelectionChange() {
+    if (!this.selectedMasterPrefectureId || !this.selectedMasterYear) {
+      this.masterGrades = null;
+      return;
+    }
+    this.isLoadingMasterGrades = true;
+    this.masterGradesError = null;
+    try {
+      const gradesCol = collection(this.firestore, 'prefectures', this.selectedMasterPrefectureId, 'insurance_premiums', this.selectedMasterYear, 'grades');
+      const snapshot = await getDocs(gradesCol);
+      if (snapshot.empty) {
+        this.masterGrades = null;
+        this.masterGradesError = 'データがありません';
+      } else {
+        this.masterGrades = {};
+        snapshot.docs.forEach(doc => {
+          this.masterGrades[doc.id] = doc.data();
+        });
+      }
+    } catch (error) {
+      this.masterGrades = null;
+      this.masterGradesError = 'データ取得エラー';
+    } finally {
+      this.isLoadingMasterGrades = false;
+    }
+  }
+
+  enableEditMode() {
+    this.isEditMode = true;
+    // ディープコピー
+    this.editGrades = JSON.parse(JSON.stringify(this.masterGrades));
+  }
+
+  cancelEditMode() {
+    this.isEditMode = false;
+  }
+
+  async saveMasterGrades() {
+    if (!this.selectedMasterPrefectureId || !this.selectedMasterYear) return;
+    try {
+      const gradesCol = collection(this.firestore, 'prefectures', this.selectedMasterPrefectureId, 'insurance_premiums', this.selectedMasterYear, 'grades');
+      for (const [gradeId, gradeData] of Object.entries(this.editGrades)) {
+        const gradeDoc = doc(gradesCol, gradeId);
+        await setDoc(gradeDoc, gradeData);
+      }
+      this.isEditMode = false;
+      // 保存後、再取得してmasterGradesを更新
+      await this.onMasterSelectionChange();
+      alert('保険料表を保存しました');
+    } catch (error: any) {
+      alert('保存中にエラーが発生しました');
+    }
+  }
+
+  async onHistorySelectionChange() {
+    this.historyPrefectureRates = null;
+    this.historyPrefectureRatesError = null;
+    if (!this.selectedHistoryPrefectureId) return;
+    try {
+      const prefectureDocRef = doc(this.firestore, 'prefectures', this.selectedHistoryPrefectureId);
+      const prefectureDoc = await getDoc(prefectureDocRef);
+      if (prefectureDoc.exists()) {
+        this.historyPrefectureRates = prefectureDoc.data();
+      } else {
+        this.historyPrefectureRatesError = 'データがありません';
+      }
+    } catch (e) {
+      this.historyPrefectureRatesError = '取得エラー';
+    }
+  }
+
+  get historyKaigoRate(): string | null {
+    if (
+      this.historyPrefectureRates &&
+      this.historyPrefectureRates.tokutei_rate != null &&
+      this.historyPrefectureRates.ippan_rate != null
+    ) {
+      const tokutei = new Decimal(this.historyPrefectureRates.tokutei_rate);
+      const ippan = new Decimal(this.historyPrefectureRates.ippan_rate);
+      // 小数第4位で四捨五入
+      return tokutei.minus(ippan).toFixed(4);
+    }
+    return null;
   }
 }

@@ -32,11 +32,8 @@ export interface InsurancePremium {
     kousei: {
       full: number;
       half: number;
+      is_applicable: boolean;
     };
-  };
-  ippan: {
-    full: number;
-    half: number;
   };
   total: number;
   created_at: Date;

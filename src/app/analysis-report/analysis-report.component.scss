@@ -1,0 +1,132 @@
+.analysis-dashboard-container {
+  max-width: 900px;
+  margin: 2rem auto;
+  padding: 20px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+}
+
+.tab-header {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.tab-header button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  background-color: #f0f0f0;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+.tab-header button.active {
+  background-color: #1976d2;
+  color: white;
+}
+
+.summary-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.2rem;
+  margin-bottom: 2.5rem;
+}
+.summary-card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 1.2rem 2rem;
+  min-width: 180px;
+  min-height: 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+.summary-title {
+  color: #1976d2;
+  font-size: 1.05rem;
+  margin-bottom: 0.3em;
+}
+.summary-value {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #333;
+}
+.summary-sub {
+  font-size: 0.95rem;
+  color: #888;
+  margin-top: 0.2em;
+}
+.filter-export-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  gap: 1.5rem;
+}
+.filter-controls label {
+  margin-right: 1.5em;
+  font-size: 1rem;
+  color: #333;
+}
+.export-controls {
+  display: flex;
+  gap: 0.7em;
+}
+.export-btn {
+  background: #1976d2;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.6em 1.5em;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.export-btn:hover {
+  background: #1565c0;
+}
+.graph-section {
+  background: #fafbfc;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.06);
+  padding: 1.5rem 1.2rem;
+  margin-bottom: 2rem;
+}
+h2 {
+  color: #1976d2;
+  font-size: 1.5rem;
+  margin-bottom: 1.5rem;
+  font-weight: bold;
+  text-align: left;
+}
+h3 {
+  color: #1976d2;
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+  font-weight: bold;
+}
+@media (max-width: 600px) {
+  .analysis-dashboard-container {
+    padding: 1rem 0.5rem;
+  }
+  .summary-card {
+    padding: 1rem 0.5rem;
+    font-size: 0.95rem;
+  }
+  .graph-section {
+    padding: 1rem 0.5rem;
+  }
+  .tab-header {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}
+table {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.06);
+} 

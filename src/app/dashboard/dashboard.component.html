@@ -4,13 +4,14 @@
   <div class="dashboard-grid">
     <a routerLink="/employee-management" class="dashboard-card">従業員管理</a>
     <a routerLink="/insurance-procedures" class="dashboard-card">保険手続き</a>
-    <a routerLink="/application-approval" class="dashboard-card">申請承認</a>
+    <a routerLink="/application-approval" class="dashboard-card">申請・承認</a>
     <a routerLink="/payroll-management" class="dashboard-card">給与情報管理</a>
     <a routerLink="/insurance-premium-calculation" class="dashboard-card">保険料管理</a>
     <a routerLink="/report-export" class="dashboard-card">帳票出力</a>
-    <a routerLink="/admin-pages" class="dashboard-card">各種管理ページ</a>
-    <a routerLink="/vendor-page" class="dashboard-card vendor">ベンダー専用ページ</a>
     <a routerLink="/master-settings" class="dashboard-card">🛠️ マスタ設定・自社管理（管理者専用）</a>
+    <a routerLink="/analysis-report" class="dashboard-card">分析・レポート</a>
+    <a routerLink="/support-faq" class="dashboard-card">サポート・FAQ</a>
+    <a routerLink="/vendor-page" class="dashboard-card vendor">ベンダー専用ページ</a>
   </div>
   <div class="dashboard-user-info" style="position: absolute; top: 1.2rem; right: 2.5rem; background: #e3f2fd; color: #1976d2; border-radius: 8px; padding: 0.7rem 1.2rem; font-size: 1rem; font-weight: 500; box-shadow: 0 2px 8px rgba(25, 118, 210, 0.08);">
     <ng-container *ngIf="isAuthReady$ | async as isReady">

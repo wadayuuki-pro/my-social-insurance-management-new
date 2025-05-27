@@ -568,9 +568,38 @@ export class EmployeeManagementComponent implements OnInit {
             }
           }
         }
-        saveData.auto_grade = auto_grade === undefined ? '' : auto_grade;
+        // --- ここから操作ログ用のauto_grade変更検知 ---
+        const beforeAutoGrade = this.selectedEmployee.auto_grade || '';
+        const afterAutoGrade = auto_grade === undefined ? '' : auto_grade;
+        // --- ここまで ---
+        saveData.auto_grade = afterAutoGrade;
         saveData.auto_standard_salary = auto_standard_salary === undefined ? '' : auto_standard_salary;
         await updateDoc(ref, saveData);
+        // --- auto_gradeが変更された場合のみ操作ログを記録 ---
+        if (beforeAutoGrade !== afterAutoGrade) {
+          // IPアドレス取得
+          let ipAddress = '';
+          try {
+            const res = await fetch('https://api.ipify.org?format=json');
+            const json = await res.json();
+            ipAddress = json.ip;
+          } catch (e) {
+            ipAddress = '';
+          }
+          const logsCol = collection(this.firestore, 'operation_logs');
+          await addDoc(logsCol, {
+            user_id: snapshot.docs[0].id,
+            employee_code: this.selectedEmployee.employee_code,
+            user_name: (this.selectedEmployee.last_name_kanji || '') + (this.selectedEmployee.first_name_kanji || ''),
+            company_id: this.selectedEmployee.company_id,
+            operation_type: 'salary',
+            operation_detail: `auto_gradeを「${beforeAutoGrade}」→「${afterAutoGrade}」に変更`,
+            ip_address: ipAddress,
+            status: 'success',
+            timestamp: new Date()
+          });
+        }
+        // --- ここまで ---
         this.detailSaveMessage = '保存しました';
         await this.loadEmployees();
         this.closeDetail(); // 保存後にモーダルを閉じる

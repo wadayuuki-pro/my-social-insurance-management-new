@@ -127,6 +127,31 @@ export class InsurancePremiumService {
             }
           }
 
+          // --- 料率の抽出 ---
+          // 例: 8行目（インデックス7）のH列, J列, K列などに料率がある前提
+          // セルの値を直接参照する
+          let ippan_rate = null;
+          let tokutei_rate = null;
+          let kousei_rate = null;
+          try {
+            // F9/G9, H9/I9, J9/K9 の両方をチェック
+            const getCell = (col: any, row: any) => firstSheet[XLSX.utils.encode_cell({ c: col, r: row })]?.v;
+            // 一般保険料率（F9, G9）
+            const ippan1 = getCell(5, 8);
+            const ippan2 = getCell(6, 8);
+            ippan_rate = parseFloat(String(ippan1 ?? ippan2).replace(/[^\d.]/g, '')) || parseFloat(String(ippan2 ?? ippan1).replace(/[^\d.]/g, '')) || null;
+            // 特定保険料率（H9, I9）
+            const tokutei1 = getCell(7, 8);
+            const tokutei2 = getCell(8, 8);
+            tokutei_rate = parseFloat(String(tokutei1 ?? tokutei2).replace(/[^\d.]/g, '')) || parseFloat(String(tokutei2 ?? tokutei1).replace(/[^\d.]/g, '')) || null;
+            // 厚生年金保険料率（J9, K9）
+            const kousei1 = getCell(9, 8);
+            const kousei2 = getCell(10, 8);
+            kousei_rate = parseFloat(String(kousei1 ?? kousei2).replace(/[^\d.]/g, '')) || parseFloat(String(kousei2 ?? kousei1).replace(/[^\d.]/g, '')) || null;
+          } catch (e) {
+            // 取得失敗時はnullのまま
+          }
+
           for (let i = 0; i < dataRows.length; i++) {
             const row = dataRows[i];
             const gradeId = String(row[gradeIdx]).trim();
@@ -172,6 +197,15 @@ export class InsurancePremiumService {
             // 都道府県ごとの保存
             const gradeDoc = doc(yearCollection, gradeId);
             await setDoc(gradeDoc, premium);
+          }
+
+          // --- 料率をprefecture_id直下に保存 ---
+          const rateData: any = {};
+          if (ippan_rate !== null) rateData.ippan_rate = ippan_rate;
+          if (tokutei_rate !== null) rateData.tokutei_rate = tokutei_rate;
+          if (kousei_rate !== null) rateData.kousei_rate = kousei_rate;
+          if (Object.keys(rateData).length > 0) {
+            await setDoc(prefectureDoc, rateData, { merge: true });
           }
 
           resolve();

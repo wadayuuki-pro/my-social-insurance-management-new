@@ -10,6 +10,8 @@ import { ReportExportComponent } from './report-export/report-export.component';
 import { AdminPagesComponent } from './admin-pages/admin-pages.component';
 import { VendorPageComponent } from './vendor-page/vendor-page.component';
 import { vendorGuard } from './vendor.guard';
+import { AnalysisReportComponent } from './analysis-report/analysis-report.component';
+import { SupportFaqComponent } from './support-faq/support-faq.component';
 
 export const routes: Routes = [
   { path: '', redirectTo: 'login', pathMatch: 'full' },
@@ -31,6 +33,8 @@ export const routes: Routes = [
   },
   { path: 'report-export', component: ReportExportComponent },
   { path: 'admin-pages', component: AdminPagesComponent },
+  { path: 'analysis-report', component: AnalysisReportComponent },
+  { path: 'support-faq', component: SupportFaqComponent },
   { path: 'vendor-page', component: VendorPageComponent, canActivate: [vendorGuard] },
   {
     path: 'master-settings',
