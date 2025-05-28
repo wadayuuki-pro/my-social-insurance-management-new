@@ -149,6 +149,17 @@
       </div>
 
       <div class="form-row">
+        <label for="approvalRoute">決済ルート <span style="color:#d32f2f;">*</span></label>
+        <select id="approvalRoute" name="approvalRoute" [(ngModel)]="selectedApprovalRouteId" required [disabled]="filteredApprovalRoutes.length === 0">
+          <option value="">選択してください</option>
+          <option *ngFor="let route of filteredApprovalRoutes" [value]="route.id">
+            {{ route.name }}（{{ route.applicableFormTypes.join(', ') }}）
+          </option>
+        </select>
+        <small *ngIf="filteredApprovalRoutes.length === 0" style="color:#d32f2f;">この申請種類に利用できる決済ルートがありません</small>
+      </div>
+
+      <div class="form-row">
         <label>申請タイトル <span style="color:#d32f2f;">*</span></label>
         <input type="text" [(ngModel)]="title" name="title" placeholder="申請のタイトルを入力" required />
       </div>
@@ -164,126 +175,168 @@
       </div>
       <div class="form-row">
         <label>添付ファイル</label>
-        <input type="file" multiple />
+        <input type="file" multiple (change)="onFileSelected($event)" />
+        <div *ngIf="uploading" style="color:#1976d2; font-size:0.95em; margin-top:0.5em;">アップロード中...</div>
+        <div *ngIf="attachments.length > 0" class="uploaded-files" style="margin-top:0.5em;">
+          <span style="font-size:0.95em; color:#333;">アップロード済みファイル:</span>
+          <ul class="attachment-gallery">
+            <li *ngFor="let url of attachments" class="attachment-item">
+              <a [href]="url" target="_blank">
+                <ng-container *ngIf="isImageFile(url); else fileIcon">
+                  <img [src]="url" alt="添付画像" class="attachment-thumb" />
+                  <div class="attachment-label">写真</div>
+                </ng-container>
+                <ng-template #fileIcon>
+                  <div class="attachment-fileicon">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                      <path d="M17 7V17C17 19.2091 15.2091 21 13 21C10.7909 21 9 19.2091 9 17V7C9 5.89543 9.89543 5 11 5C12.1046 5 13 5.89543 13 7V17" stroke="#1976d2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </div>
+                  <div class="attachment-label">ファイル</div>
+                  <div class="attachment-filename">{{ getFileName(url) }}</div>
+                </ng-template>
+              </a>
+            </li>
+          </ul>
+        </div>
       </div>
       <div class="form-row" style="display:flex; gap:1em;">
-        <button type="button" class="approval-btn draft">下書き保存</button>
+        <button type="button" class="approval-btn draft" (click)="saveDraft()">下書き保存</button>
         <button type="submit" class="approval-btn submit">送信</button>
       </div>
     </form>
+
+    <div *ngIf="drafts.length > 0" class="draft-list" style="margin-top:2em;">
+      <h4 style="color:#1976d2; font-size:1.1em; margin-bottom:0.7em;">下書き一覧</h4>
+      <table style="width:100%; background:#fff; border-radius:8px; box-shadow:0 2px 8px rgba(25,118,210,0.06);">
+        <thead>
+          <tr style="background:#f5f5f5;">
+            <th style="padding:0.6em;">タイトル</th>
+            <th style="padding:0.6em;">申請種別</th>
+            <th style="padding:0.6em;">作成日</th>
+            <th style="padding:0.6em;">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let draft of drafts">
+            <td style="padding:0.6em;">{{ draft.title }}</td>
+            <td style="padding:0.6em;">{{ draft.type }}</td>
+            <td style="padding:0.6em;">{{ draft.createdAt?.toDate ? (draft.createdAt.toDate() | date:'yyyy/MM/dd HH:mm') : (draft.createdAt | date:'yyyy/MM/dd HH:mm') }}</td>
+            <td style="padding:0.6em;">
+              <button type="button" class="approval-btn draft" (click)="editDraft(draft)">編集</button>
+              <button type="button" class="approval-btn delete-route" (click)="deleteDraft(draft.id)">削除</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <!-- 承認フロー管理 -->
   <div *ngIf="selectedTab === 'approval'" class="tab-content">
     <h3>承認フロー管理</h3>
-    <div class="approval-list-container">
+
+    <!-- 自分が承認待ちの申請一覧 -->
+    <div *ngIf="myApprovalList.length > 0" class="my-approval-list" style="margin-bottom:2em;">
+      <h4 style="color:#1976d2; font-size:1.1em; margin-bottom:0.7em;">自分が承認待ちの申請</h4>
       <table class="approval-table">
         <thead>
           <tr>
-            <th style="width: 15%">申請者名</th>
-            <th style="width: 15%">申請種類</th>
-            <th style="width: 20%">申請日</th>
-            <th style="width: 20%">ステータス</th>
-            <th style="width: 10%">コメント</th>
-            <th style="width: 20%">操作</th>
+            <th>申請者名</th>
+            <th>申請タイトル</th>
+            <th>申請種別</th>
+            <th>申請日</th>
+            <th>操作</th>
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td>山田 太郎</td>
-            <td>住所変更</td>
-            <td>2024/06/01</td>
-            <td><span class="status status-pending">申請中</span></td>
-            <td>-</td>
+          <tr *ngFor="let app of myApprovalList">
+            <td>{{ employeeNameMap[app.employeeId] || app.employeeId }}</td>
+            <td>{{ app.title }}</td>
+            <td>{{ app.type }}</td>
+            <td>{{ app.createdAt?.toDate ? (app.createdAt.toDate() | date:'yyyy/MM/dd HH:mm') : (app.createdAt | date:'yyyy/MM/dd HH:mm') }}</td>
             <td>
-              <div class="action-buttons">
-                <button class="approval-btn approve">承認</button>
-                <button class="approval-btn reject">却下</button>
-                <button class="approval-btn comment">差戻し</button>
-              </div>
+              <button class="approval-btn comment" (click)="openMyApprovalDetail(app)">内容確認</button>
             </td>
-          </tr>
-          <tr>
-            <td>佐藤 花子</td>
-            <td>扶養異動</td>
-            <td>2024/05/28</td>
-            <td><span class="status status-approved">承認済み</span></td>
-            <td>書類不備なし</td>
-            <td>-</td>
-          </tr>
-          <tr>
-            <td>鈴木 一郎</td>
-            <td>氏名変更</td>
-            <td>2024/05/20</td>
-            <td><span class="status status-rejected">却下</span></td>
-            <td>証明書類不足</td>
-            <td>-</td>
           </tr>
         </tbody>
       </table>
-      <div class="approval-comment-box">
-        <h4>差戻しコメント入力</h4>
-        <textarea rows="2" placeholder="差戻し理由や修正点を入力"></textarea>
-        <button class="approval-btn comment">コメント送信</button>
-      </div>
+    </div>
+
+    <div *ngIf="myApprovalList.length === 0" style="color:#888; margin-top:2em;">
+      承認待ちの申請はありません。
     </div>
   </div>
 
   <!-- 履歴表示・検索 -->
   <div *ngIf="selectedTab === 'history'" class="tab-content">
     <h3>申請履歴・検索</h3>
-    <div class="history-filter-row">
-      <label>ステータス:
-        <select>
-          <option>すべて</option>
-          <option>申請中</option>
-          <option>承認済み</option>
-          <option>差戻し</option>
-          <option>却下</option>
-        </select>
-      </label>
-      <label>申請者:
-        <input type="text" placeholder="氏名で検索" />
-      </label>
-      <button class="approval-btn search">検索</button>
+    <div *ngIf="myApplicationHistory.length > 0; else noHistory">
+      <table class="approval-table">
+        <thead>
+          <tr>
+            <th>申請タイトル</th>
+            <th>申請種別</th>
+            <th>申請日</th>
+            <th>ステータス</th>
+            <th>承認ルート</th>
+            <th>進捗</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let app of myApplicationHistory">
+            <td>{{ app.title }}</td>
+            <td>{{ app.type }}</td>
+            <td>{{ app.createdAt?.toDate ? (app.createdAt.toDate() | date:'yyyy/MM/dd HH:mm') : (app.createdAt | date:'yyyy/MM/dd HH:mm') }}</td>
+            <td>
+              <span [ngClass]="{
+                'status-approved': app.status === '承認済み',
+                'status-pending': app.status === '申請中',
+                'status-rejected': app.status === '却下'
+              }">{{ app.status }}</span>
+            </td>
+            <td>
+              <ng-container *ngFor="let step of getApprovalRouteSteps(app.approvalRouteId); let i = index">
+                <span>{{ step.approverRole }}</span><span *ngIf="i < getApprovalRouteSteps(app.approvalRouteId).length - 1">→</span>
+              </ng-container>
+            </td>
+            <td>
+              <span *ngIf="app.status === '承認済み'">完了</span>
+              <span *ngIf="app.status === '却下'">却下</span>
+              <span *ngIf="app.status === '申請中'">{{ app.currentStep }}/{{ getApprovalRouteSteps(app.approvalRouteId).length || '-' }}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
-    <table class="approval-table">
-      <thead>
-        <tr>
-          <th>申請者名</th>
-          <th>申請種類</th>
-          <th>申請日</th>
-          <th>ステータス</th>
-          <th>承認・差戻しコメント</th>
-          <th>担当者</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>山田 太郎</td>
-          <td>住所変更</td>
-          <td>2024/06/01</td>
-          <td><span class="status status-pending">申請中</span></td>
-          <td>-</td>
-          <td>田中 課長</td>
-        </tr>
-        <tr>
-          <td>佐藤 花子</td>
-          <td>扶養異動</td>
-          <td>2024/05/28</td>
-          <td><span class="status status-approved">承認済み</span></td>
-          <td>書類不備なし</td>
-          <td>鈴木 部長</td>
-        </tr>
-        <tr>
-          <td>鈴木 一郎</td>
-          <td>氏名変更</td>
-          <td>2024/05/20</td>
-          <td><span class="status status-rejected">却下</span></td>
-          <td>証明書類不足</td>
-          <td>田中 課長</td>
-        </tr>
-      </tbody>
-    </table>
+    <ng-template #noHistory>
+      <div style="color:#888; margin-top:2em;">申請履歴がありません。</div>
+    </ng-template>
+  </div>
+</div>
+
+<!-- 申請内容詳細モーダル -->
+<div *ngIf="selectedApprovalDetail" class="approval-detail-modal" style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.18); z-index:1000; display:flex; align-items:center; justify-content:center;">
+  <div style="background:#fff; border-radius:12px; box-shadow:0 4px 24px rgba(25,118,210,0.18); padding:2em; min-width:340px; max-width:95vw; max-height:90vh; overflow:auto; position:relative;">
+    <button (click)="closeApprovalDetail()" style="position:absolute; top:1em; right:1em; background:none; border:none; font-size:1.5em; color:#1976d2; cursor:pointer;">×</button>
+    <h4 style="color:#1976d2; font-size:1.2em; margin-bottom:0.7em;">申請内容詳細</h4>
+    <div style="margin-bottom:0.7em;"><b>申請タイトル：</b>{{ selectedApprovalDetail.title }}</div>
+    <div style="margin-bottom:0.7em;"><b>申請者：</b>{{ employeeNameMap[selectedApprovalDetail.employeeId] || selectedApprovalDetail.employeeId }}</div>
+    <div style="margin-bottom:0.7em;"><b>申請種別：</b>{{ selectedApprovalDetail.type }}</div>
+    <div style="margin-bottom:0.7em;"><b>申請日：</b>{{ selectedApprovalDetail.createdAt?.toDate ? (selectedApprovalDetail.createdAt.toDate() | date:'yyyy/MM/dd HH:mm') : (selectedApprovalDetail.createdAt | date:'yyyy/MM/dd HH:mm') }}</div>
+    <div style="margin-bottom:0.7em;"><b>重要度：</b><span *ngIf="selectedApprovalDetail.isImportant" style="color:#d32f2f; font-weight:bold;">高</span><span *ngIf="!selectedApprovalDetail.isImportant">通常</span></div>
+    <div style="margin-bottom:0.7em;"><b>申請内容詳細：</b><br>{{ selectedApprovalDetail.description }}</div>
+    <div *ngIf="selectedApprovalDetail.attachments && selectedApprovalDetail.attachments.length > 0" style="margin-bottom:0.7em;">
+      <b>添付ファイル：</b>
+      <ul style="padding-left:1.2em;">
+        <li *ngFor="let url of selectedApprovalDetail.attachments">
+          <a [href]="url" target="_blank">{{ url }}</a>
+        </li>
+      </ul>
+    </div>
+    <div style="display:flex; gap:1em; margin-top:1.5em;">
+      <button class="approval-btn approve" (click)="approveApplication(selectedApprovalDetail)">承認</button>
+      <button class="approval-btn reject">却下</button>
+    </div>
   </div>
 </div>

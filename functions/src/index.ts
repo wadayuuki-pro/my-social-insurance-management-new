@@ -1,13 +1,28 @@
-import * as functions from "firebase-functions";
+import * as functions from "firebase-functions/v2";
 import * as admin from "firebase-admin";
+import * as nodemailer from "nodemailer";
+
 admin.initializeApp();
 
-export const createEmployeeWithAuth = functions.https.onCall(
-  async (data: any, context) => {
-    // 必要なら管理者チェック
-    // if (!context.auth || !context.auth.token.admin)
-    //   throw new functions.https.HttpsError("permission-denied");
+// メール送信用の設定
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: functions.config().gmail.email,
+    pass: functions.config().gmail.password,
+  },
+});
 
+interface EmployeeData {
+  email: string;
+  password: string;
+  displayName?: string;
+  employeeData: Record<string, unknown>;
+}
+
+export const createEmployeeWithAuth = functions.https.onCall<EmployeeData>(
+  async (request) => {
+    const data = request.data;
     // 1. Firebase Authユーザー作成
     const userRecord = await admin.auth().createUser({
       email: data.email,
@@ -25,6 +40,70 @@ export const createEmployeeWithAuth = functions.https.onCall(
     await admin.firestore().collection("employees").add(employeeData);
 
     return {uid: userRecord.uid};
-  }
+  },
+);
+
+// 申請が作成されたときに次の承認者にメール通知を送信
+export const sendApprovalNotification = functions.firestore.onDocumentCreated(
+  "applications/{applicationId}",
+  async (event) => {
+    const application = event.data?.data();
+    if (!application) return;
+
+    // 次の承認者のメールアドレスを取得
+    const approverIds = application.currentApproverIds || [];
+    if (approverIds.length === 0) return;
+
+    const db = admin.firestore();
+    const approverEmails: string[] = [];
+
+    // 承認者のメールアドレスを取得
+    for (const approverId of approverIds) {
+      const employeeDoc = await db.collection("employees")
+        .where("employee_code", "==", approverId)
+        .get();
+
+      if (!employeeDoc.empty) {
+        const employeeData = employeeDoc.docs[0].data();
+        if (employeeData.email) {
+          approverEmails.push(employeeData.email);
+        }
+      }
+    }
+
+    if (approverEmails.length === 0) return;
+
+    // メール本文を作成
+    const mailOptions = {
+      from: functions.config().gmail.email,
+      to: approverEmails.join(","),
+      subject: `【承認依頼】${application.title}`,
+      html: `
+        <h2>承認依頼が届きました</h2>
+        <p>以下の申請の承認をお願いします。</p>
+        <hr>
+        <p><strong>申請タイトル：</strong>${application.title}</p>
+        <p><strong>申請種別：</strong>${application.type}</p>
+        <p><strong>申請者：</strong>${application.employeeId}</p>
+        <p><strong>申請日時：</strong>${
+  application.createdAt.toDate().toLocaleString()
+}</p>
+        <p><strong>申請内容：</strong></p>
+        <p>${application.description}</p>
+        <hr>
+        <p>以下のURLから承認処理を行ってください：</p>
+        <p><a href="${
+  functions.config().app.url
+}/application-approval">承認ページへ</a></p>
+      `,
+    };
+
+    try {
+      await transporter.sendMail(mailOptions);
+      console.log("承認通知メールを送信しました");
+    } catch (error) {
+      console.error("メール送信エラー:", error);
+    }
+  },
 );
 
