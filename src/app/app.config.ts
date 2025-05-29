@@ -8,6 +8,7 @@ import { environment } from '../environments/environment';
 import { routes } from './app.routes';
 import { provideHttpClient } from '@angular/common/http';
 import { provideStorage, getStorage } from '@angular/fire/storage';
+import { provideClientHydration } from '@angular/platform-browser';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -19,5 +20,6 @@ export const appConfig: ApplicationConfig = {
     provideFunctions(() => getFunctions()),
     provideHttpClient(),
     provideStorage(() => getStorage()),
+    provideClientHydration()
   ]
 };

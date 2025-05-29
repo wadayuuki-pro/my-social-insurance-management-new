@@ -1,4 +1,4 @@
-import * as functions from "firebase-functions/v2";
+import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as nodemailer from "nodemailer";
 
@@ -13,16 +13,8 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-interface EmployeeData {
-  email: string;
-  password: string;
-  displayName?: string;
-  employeeData: Record<string, unknown>;
-}
-
-export const createEmployeeWithAuth = functions.https.onCall<EmployeeData>(
-  async (request) => {
-    const data = request.data;
+export const createEmployeeWithAuth = functions.https.onCall(
+  async (data: any, context: any) => {
     // 1. Firebase Authユーザー作成
     const userRecord = await admin.auth().createUser({
       email: data.email,
@@ -44,10 +36,10 @@ export const createEmployeeWithAuth = functions.https.onCall<EmployeeData>(
 );
 
 // 申請が作成されたときに次の承認者にメール通知を送信
-export const sendApprovalNotification = functions.firestore.onDocumentCreated(
-  "applications/{applicationId}",
-  async (event) => {
-    const application = event.data?.data();
+export const sendApprovalNotification = functions.firestore
+  .document("applications/{applicationId}")
+  .onCreate(async (snap: any, context: any) => {
+    const application = snap.data();
     if (!application) return;
 
     // 次の承認者のメールアドレスを取得
@@ -104,6 +96,5 @@ export const sendApprovalNotification = functions.firestore.onDocumentCreated(
     } catch (error) {
       console.error("メール送信エラー:", error);
     }
-  },
-);
+  });
 

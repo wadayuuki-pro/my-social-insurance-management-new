@@ -1,13 +1,33 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Auth, createUserWithEmailAndPassword } from '@angular/fire/auth';
-import { Firestore, collection, query, where, getDocs, doc, updateDoc, addDoc } from '@angular/fire/firestore';
+import { Firestore, collection, query, where, getDocs, doc, updateDoc, addDoc, getDoc, setDoc, serverTimestamp } from '@angular/fire/firestore';
 import { FormBuilder, FormGroup, ReactiveFormsModule, FormArray, Validators, AbstractControl, ValidatorFn } from '@angular/forms';
 import { AddMemberButtonComponent } from '../shared/components/add-member-button/add-member-button.component';
 import { AuthService } from '../shared/services/auth.service';
 import { switchMap, map } from 'rxjs/operators';
 import { of, from } from 'rxjs';
 import { FormsModule } from '@angular/forms';
+import { HttpClient } from '@angular/common/http';
+import * as XLSX from 'xlsx';
+import { Storage } from '@angular/fire/storage';
+import { Router } from '@angular/router';
+import { Timestamp } from '@angular/fire/firestore';
+
+interface Employee {
+  id: string;
+  employee_code: string;
+  last_name_kanji: string;
+  first_name_kanji: string;
+  department_id: string;
+  department?: string;
+  my_number?: string;
+  my_number_registered_at?: any;
+  my_number_updated_at?: any;
+  uid?: string;
+  [key: string]: any;
+  hasMyNumber?: boolean;
+}
 
 @Component({
   selector: 'app-employee-management',
@@ -59,21 +79,23 @@ export class EmployeeManagementComponent implements OnInit {
     employment_start_date: '勤務開始日',
     employment_end_date: '勤務終了日',
     status: '在籍ステータス',
-    department: '所属部署・拠点',
-    work_category: '勤務区分',
+    department: '所属部署',
+    work_category: '職位',
     health_insurance_enrolled: '健康保険加入状況',
     pension_insurance_enrolled: '厚生年金加入状況',
     health_insurance_number: '健康保険番号',
-    pension_number: '厚生年金番号',
-    insurer_number: '保険者番号',
-    office_number: '事業所番号',
+    pension_number: '基礎年金番号',
     has_dependents: '扶養家族の有無',
     dependents: '扶養者情報',
     remarks: '特記事項',
     created_at: '作成日時',
     updated_at: '更新日時',
     role: '権限',
-    password: 'パスワード'
+    password: 'パスワード',
+    is_dependent: '自分が扶養されているか',
+    expected_salary: '給与支給予定額',
+    auto_grade: '等級',
+    auto_standard_salary: '標準報酬月額'
   };
 
   // 入力例（placeholder）
@@ -89,11 +111,9 @@ export class EmployeeManagementComponent implements OnInit {
     postal_code: '例：123-4567',
     my_number: '例：123456789012',
     department: '例：営業部',
-    work_category: '例：正社員',
-    health_insurance_number: '例：1234567890',
-    pension_number: '例：123456789012',
-    insurer_number: '例：1234567',
-    office_number: '例：1234567890',
+    work_category: '例：部長',
+    health_insurance_number: '例：12345678(8桁)',
+    pension_number: '例：123456789012(12桁 ハイフンなし)',
     remarks: '例：特記事項など',
     password: '初期パスワードは自動生成'
   };
@@ -124,13 +144,15 @@ export class EmployeeManagementComponent implements OnInit {
     'pension_insurance_enrolled',
     'health_insurance_number',
     'pension_number',
-    'insurer_number',
-    'office_number',
+    'has_dependents',
+    'is_dependent',
+    'dependents',
     'remarks',
     'role',
     'password',
-    'has_dependents',
-    'dependents',
+    'expected_salary',
+    'auto_grade',
+    'auto_standard_salary',
     'created_at',
     'updated_at'
   ];
@@ -158,11 +180,47 @@ export class EmployeeManagementComponent implements OnInit {
   showLeaveDates = false;
   showNewLeaveDates = false;
 
+  // バリデータ追加
+  healthInsuranceNumberValidator: ValidatorFn = (control: AbstractControl) => {
+    const value = control.value;
+    if (!value) return null;
+    return /^\d{8}$/.test(value) ? null : { length: true };
+  };
+  pensionNumberValidator: ValidatorFn = (control: AbstractControl) => {
+    const value = control.value;
+    if (!value) return null;
+    return /^\d{12}$/.test(value) ? null : { length: true };
+  };
+
+  @ViewChild('employeesImportInput') employeesImportInput!: ElementRef<HTMLInputElement>;
+  @ViewChild('dependentsImportInput') dependentsImportInput!: ElementRef<HTMLInputElement>;
+
+  activeTab: 'employee' | 'mynumber' | 'insurance' = 'employee';
+
+  // マイナンバー管理用のプロパティ
+  myNumberSearchForm: FormGroup;
+  myNumberEditForm: FormGroup;
+  showMyNumberEditModal = false;
+  filteredMyNumberEmployees: any[] = [];
+
+  // 事業所関連のプロパティを追加
+  offices: any[] = [];
+  selectedOfficeId: string = '';
+  officeEmployees: Employee[] = [];
+
+  currentUserRole: string = '';
+
+  // ログインユーザーのマイナンバー登録状況を取得するプロパティ
+  public isMyNumberRegistered: boolean = false;
+
   constructor(
     private auth: Auth,
     private firestore: Firestore,
     private fb: FormBuilder,
-    private authService: AuthService
+    private authService: AuthService,
+    private http: HttpClient,
+    private storage: Storage,
+    private router: Router
   ) {
     this.searchForm = this.fb.group({
       employee_id: ['']
@@ -210,11 +268,10 @@ export class EmployeeManagementComponent implements OnInit {
       work_category: [''],
       health_insurance_enrolled: [false],
       pension_insurance_enrolled: [false],
-      health_insurance_number: [''],
-      pension_number: [''],
-      insurer_number: [''],
-      office_number: [''],
+      health_insurance_number: ['', [this.healthInsuranceNumberValidator]],
+      pension_number: ['', [this.pensionNumberValidator]],
       has_dependents: [false],
+      is_dependent: [false],
       role: [''],
       password: [''],
       remarks: [''],
@@ -226,7 +283,6 @@ export class EmployeeManagementComponent implements OnInit {
       expected_salary: [''],
       auto_grade: [{value: '', disabled: true}],
       auto_standard_salary: [{value: '', disabled: true}],
-      basic_pension_number: [''],
       health_insurance_enrollment_date: [''],
       pension_insurance_enrollment_date: [''],
       health_insurance_withdrawal_date: [''],
@@ -274,24 +330,82 @@ export class EmployeeManagementComponent implements OnInit {
         );
       })
     );
+
+    // マイナンバー検索フォームの初期化
+    this.myNumberSearchForm = this.fb.group({
+      office_id: [''],
+      employee_id: [''],
+      name: [''],
+      department: [''],
+      my_number_status: [''],
+      selected_employee_id: ['']
+    });
+
+    // マイナンバー編集フォームの初期化
+    this.myNumberEditForm = this.fb.group({
+      my_number: ['', [Validators.required, Validators.pattern(/^\d{12}$/)]],
+      my_number_note: ['']
+    });
+
+    // ログイン情報から会社IDを取得
+    this.employeeInfo$.subscribe(info => {
+      if (info) {
+        this.companyId = info.company_id;
+        // 会社IDが取得できたら部署一覧と事業所一覧を読み込む
+        this.loadDepartments();
+        this.loadOffices();
+      }
+    });
+
+    // ログインユーザーの権限を取得
+    this.auth.onAuthStateChanged(async (user) => {
+      if (user && user.email) {
+        // 会社IDは this.companyId で取得済み
+        // companyIdがまだセットされていない場合は待つ
+        const waitForCompanyId = async () => {
+          while (!this.companyId) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        };
+        await waitForCompanyId();
+        const employeesCol = collection(this.firestore, 'employees');
+        const q = query(
+          employeesCol,
+          where('company_id', '==', this.companyId),
+          where('email', '==', user.email)
+        );
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const docSnap = snapshot.docs[0];
+          const data = docSnap.data();
+          this.currentUserRole = data['role'] || '';
+          console.log('現在のユーザー権限:', this.currentUserRole);
+          // ドキュメントIDを取得
+          const employeeDocId = docSnap.id;
+          // sensitive_idsコレクションの同じIDのmyNumberを確認
+          const sensitiveDoc = await getDoc(doc(this.firestore, 'sensitive_ids', employeeDocId));
+          this.isMyNumberRegistered = !!(sensitiveDoc.exists() && sensitiveDoc.data()['myNumber']);
+        } else {
+          this.currentUserRole = '';
+          this.isMyNumberRegistered = false;
+          console.log('ユーザー情報が見つかりませんでした');
+        }
+      }
+    });
   }
 
   async ngOnInit() {
-    // 認証状態の購読
-    this.authService.isAuthReady$.subscribe(isReady => {
-      if (isReady) {
-        this.authService.companyId$.subscribe(async companyId => {
-          if (companyId) {
-            this.companyId = companyId;
+    this.authService.companyId$.subscribe(async companyId => {
+      if (companyId) {
+        this.companyId = companyId;
         await this.loadEmployees();
-          }
-        });
       }
     });
     // 検索欄の値が変わったらフィルタ
     this.searchForm.get('employee_id')!.valueChanges.subscribe(val => {
       this.filterEmployees(val);
     });
+    await this.logCurrentEmployeeAndSensitiveId();
   }
 
   async loadEmployees() {
@@ -501,7 +615,6 @@ export class EmployeeManagementComponent implements OnInit {
     this.detailForm.get('expected_salary')?.valueChanges.subscribe(val => {
       this.judgeGradeAndStandardSalary(val, 'detail');
     });
-    this.detailForm.addControl('basic_pension_number', this.fb.control(emp.basic_pension_number || ''));
     this.showDetailModal = true;
     this.detailSaveMessage = '';
   }
@@ -514,6 +627,15 @@ export class EmployeeManagementComponent implements OnInit {
 
   async saveDetail() {
     if (!this.selectedEmployee || !this.selectedEmployee.employee_code) return;
+    // バリデーションチェック
+    if (this.detailForm.get('health_insurance_number')?.value && this.detailForm.get('health_insurance_number')?.errors?.['length']) {
+      this.detailSaveMessage = '健康保険番号の桁数に誤りがあります';
+      return;
+    }
+    if (this.detailForm.get('pension_number')?.value && this.detailForm.get('pension_number')?.errors?.['length']) {
+      this.detailSaveMessage = '基礎年金番号の桁数に誤りがあります';
+      return;
+    }
     try {
       const employeesCol = collection(this.firestore, 'employees');
       // employee_codeとcompany_idで一意に特定
@@ -691,77 +813,86 @@ export class EmployeeManagementComponent implements OnInit {
     this.dependentsArray.removeAt(i);
   }
 
-  exportEmployeeCSV(employee: any) {
-    // CSVヘッダーの作成
-    const headers = [
-      '社員ID',
-      '氏名（漢字）',
-      '氏名（カナ）',
-      '生年月日',
-      '性別',
-      '郵便番号',
-      '住所',
-      '電話番号',
-      'メールアドレス',
-      '雇用形態',
-      '勤務開始日',
-      '勤務終了日',
-      '在籍ステータス',
-      '所属部署',
-      '勤務区分',
-      '健康保険加入状況',
-      '厚生年金加入状況',
-      '健康保険番号',
-      '厚生年金番号',
-      '保険者番号',
-      '事業所番号',
-      '扶養家族の有無',
-      '特記事項'
-    ];
+  exportAllEmployeesCSV() {
+    if (!this.filteredEmployees || this.filteredEmployees.length === 0) {
+      alert('エクスポートする従業員がありません。');
+      return;
+    }
 
-    // データの作成
-    const data = [
-      employee.employee_code || '',
-      `${employee.last_name_kanji || ''} ${employee.first_name_kanji || ''}`,
-      `${employee.last_name_kana || ''} ${employee.first_name_kana || ''}`,
-      employee.date_of_birth || '',
-      employee.gender || '',
-      employee.postal_code || '',
-      employee.address || '',
-      employee.phone_number || '',
-      employee.email || '',
-      employee.employment_type || '',
-      employee.employment_start_date || '',
-      employee.employment_end_date || '',
-      employee.status || '',
-      employee.department || '',
-      employee.work_category || '',
-      employee.health_insurance_enrolled ? '加入' : '未加入',
-      employee.pension_insurance_enrolled ? '加入' : '未加入',
-      employee.health_insurance_number || '',
-      employee.pension_number || '',
-      employee.insurer_number || '',
-      employee.office_number || '',
-      employee.has_dependents ? '有' : '無',
-      employee.remarks || ''
-    ];
+    // 扶養者情報を除外した基本情報のカラム
+    const baseFields = this.employeeFieldOrder.filter(f => 
+      !['company_id', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at'].includes(f)
+    );
 
-    // CSVデータの作成
+    // ヘッダー行の作成
+    const headers = baseFields.map(f => this.employeeFieldLabels[f] || f);
+
+    // データ行の作成
+    const rows: string[][] = [];
+    
+    for (const emp of this.filteredEmployees) {
+      const baseData = baseFields.map(f => {
+        let val = emp[f];
+        if (f === 'has_dependents') return val ? '有' : '無';
+        if (f === 'health_insurance_enrolled' || f === 'pension_insurance_enrolled') return val ? '加入' : '未加入';
+        if (f === 'is_dependent') return val ? 'はい' : 'いいえ';
+        if (val === undefined || val === null) return '';
+        return val;
+      });
+      rows.push(baseData);
+    }
+
+    // CSVコンテンツの作成
     const csvContent = [
-      headers.join(','),
-      data.map(value => `"${value}"`).join(',')
-    ].join('\n');
+      headers,
+      ...rows
+    ].map(row => row.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
 
-    // BOMを追加してUTF-8でエンコード
+    // ダウンロード
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
-    const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8' });
+    const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `employees_export_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
-    // ダウンロードリンクの作成とクリック
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `employee_${employee.employee_code}_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
+  exportEmployeeCSV(employee: any) {
+    // 扶養者情報を除外した基本情報のカラム
+    const baseFields = this.employeeFieldOrder.filter(f => 
+      !['company_id', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at'].includes(f)
+    );
+
+    // ヘッダー行の作成
+    const headers = baseFields.map(f => this.employeeFieldLabels[f] || f);
+
+    // データ行の作成
+    const baseData = baseFields.map(f => {
+      let val = employee[f];
+      if (f === 'has_dependents') return val ? '有' : '無';
+      if (f === 'health_insurance_enrolled' || f === 'pension_insurance_enrolled') return val ? '加入' : '未加入';
+      if (f === 'is_dependent') return val ? 'はい' : 'いいえ';
+      if (val === undefined || val === null) return '';
+      return val;
+    });
+
+    // CSVコンテンツの作成
+    const csvContent = [
+      headers,
+      baseData
+    ].map(row => row.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+
+    // ダウンロード
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `employee_${employee.id}_export_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   async openNewEmployeeModal() {
@@ -774,15 +905,42 @@ export class EmployeeManagementComponent implements OnInit {
       this.departments = snapshot.docs.map(doc => doc.data());
     }
 
-    this.newEmployeeForm.reset({
-      status: '在籍中',
-      company_id: this.companyId,
-      health_insurance_enrolled: false,
-      pension_insurance_enrolled: false,
-      has_dependents: false
+    this.newEmployeeForm = this.fb.group({
+      employee_code: ['', Validators.required],
+      last_name_kanji: ['', Validators.required],
+      first_name_kanji: ['', Validators.required],
+      last_name_kana: ['', [Validators.required, this.katakanaValidator]],
+      first_name_kana: ['', [Validators.required, this.katakanaValidator]],
+      email: ['', [Validators.required, Validators.email]],
+      department_id: ['', Validators.required],
+      company_id: [this.companyId],
+      role: [''],
+      employment_type: [''],
+      status: ['在籍中'],
+      gender: [''],
+      date_of_birth: [''],
+      employment_start_date: [''],
+      employment_end_date: [''],
+      postal_code: [''],
+      address: [''],
+      phone_number: [''],
+      emergency_contact: [''],
+      health_insurance_enrolled: [false],
+      health_insurance_enrollment_date: [''],
+      health_insurance_withdrawal_date: [''],
+      health_insurance_number: [''],
+      pension_insurance_enrolled: [false],
+      pension_insurance_enrollment_date: [''],
+      pension_insurance_withdrawal_date: [''],
+      pension_number: [''],
+      has_dependents: [false],
+      is_dependent: [false],
+      dependents: this.fb.array([])
     });
+
     // 所属会社IDを編集不可に設定
     this.newEmployeeForm.get('company_id')?.disable();
+
     this.showNewEmployeeModal = true;
   }
 
@@ -808,7 +966,15 @@ export class EmployeeManagementComponent implements OnInit {
       });
       return;
     }
-
+    // バリデーションチェック
+    if (this.newEmployeeForm.get('health_insurance_number')?.value && this.newEmployeeForm.get('health_insurance_number')?.errors?.['length']) {
+      alert('健康保険番号の桁数に誤りがあります');
+      return;
+    }
+    if (this.newEmployeeForm.get('pension_number')?.value && this.newEmployeeForm.get('pension_number')?.errors?.['length']) {
+      alert('基礎年金番号の桁数に誤りがあります');
+      return;
+    }
     try {
       // 所属会社IDを有効化して値を取得
       this.newEmployeeForm.get('company_id')?.enable();
@@ -855,9 +1021,8 @@ export class EmployeeManagementComponent implements OnInit {
         pension_insurance_enrolled: formValue.pension_number ? true : false,
         health_insurance_number: formValue.health_insurance_number || '',
         pension_number: formValue.pension_number || '',
-        insurer_number: formValue.insurer_number || '',
-        office_number: formValue.office_number || '',
         has_dependents: this.newEmployeeDependentsArray.length > 0,
+        is_dependent: false,
         dependents: this.newEmployeeDependentsArray.value,
         created_at: new Date(),
         updated_at: new Date(),
@@ -925,44 +1090,6 @@ export class EmployeeManagementComponent implements OnInit {
   // 検索・ソートパネルの表示/非表示を切り替え
   toggleSearchSortPanel() {
     this.isSearchSortPanelOpen = !this.isSearchSortPanelOpen;
-  }
-
-  exportAllEmployeesCSV() {
-    if (!this.filteredEmployees || this.filteredEmployees.length === 0) {
-      alert('エクスポートする従業員がありません。');
-      return;
-    }
-    // CSVヘッダー
-    const headers = [
-      '社員ID', '氏名（漢字）', '氏名（カナ）', 'メールアドレス', '所属部署/拠点', '雇用形態', '勤務開始日', '勤務終了日', '在籍ステータス', '健康保険加入', '厚生年金加入', '扶養家族の有無', '作成日', '最終更新日'
-    ];
-    // データ行
-    const rows = this.filteredEmployees.map(emp => [
-      emp.employee_code || '',
-      (emp.last_name_kanji || '') + ' ' + (emp.first_name_kanji || ''),
-      (emp.last_name_kana || '') + ' ' + (emp.first_name_kana || ''),
-      emp.email || '',
-      emp.department || '',
-      emp.employment_type || '',
-      emp.employment_start_date || '',
-      emp.employment_end_date || '',
-      emp.status || '',
-      emp.health_insurance_enrolled ? '加入' : '未加入',
-      emp.pension_insurance_enrolled ? '加入' : '未加入',
-      emp.has_dependents ? '有' : '無',
-      emp.created_at ? (emp.created_at.toDate ? emp.created_at.toDate().toLocaleDateString() : emp.created_at) : '',
-      emp.updated_at ? (emp.updated_at.toDate ? emp.updated_at.toDate().toLocaleDateString() : emp.updated_at) : ''
-    ]);
-    // CSV文字列生成
-    const csvContent = [headers, ...rows].map(e => e.map(v => '"' + (v || '').replace(/"/g, '""') + '"').join(',')).join('\r\n');
-    // ダウンロード処理
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'employees_export.csv';
-    a.click();
-    URL.revokeObjectURL(url);
   }
 
   toggleMyNumber() {
@@ -1104,6 +1231,624 @@ export class EmployeeManagementComponent implements OnInit {
       this.newEmployeeForm.patchValue({
         pension_insurance_enrolled: true
       });
+    }
+  }
+
+  // 郵便番号から住所を検索（新規メンバー用）
+  async searchNewEmployeeAddressByPostalCode(postalCode: string) {
+    if (!postalCode || postalCode.length !== 7) return;
+    try {
+      const response = await this.http.get<any>(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${postalCode}`).toPromise();
+      if (response && response.results && response.results[0]) {
+        const address = response.results[0];
+        const fullAddress = `${address.address1}${address.address2}${address.address3}`;
+        this.newEmployeeForm.patchValue({ 
+          address: fullAddress
+        });
+      }
+    } catch (error) {
+      console.error('郵便番号検索エラー:', error);
+    }
+  }
+
+  // 郵便番号から住所を検索（詳細モーダル用）
+  async searchDetailAddressByPostalCode(postalCode: string) {
+    if (!postalCode || postalCode.length !== 7) return;
+    try {
+      const response = await this.http.get<any>(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${postalCode}`).toPromise();
+      if (response && response.results && response.results[0]) {
+        const address = response.results[0];
+        const fullAddress = `${address.address1}${address.address2}${address.address3}`;
+        this.detailForm.patchValue({ 
+          address: fullAddress
+        });
+      }
+    } catch (error) {
+      console.error('郵便番号検索エラー:', error);
+    }
+  }
+
+  // 新規メンバー用：郵便番号入力時の処理
+  onNewEmployeePostalCodeChange(postalCode: string | null) {
+    if (!postalCode) return;
+    const cleanPostalCode = postalCode.replace(/-/g, '');
+    if (cleanPostalCode.length === 7) {
+      this.searchNewEmployeeAddressByPostalCode(cleanPostalCode);
+    }
+  }
+
+  // 詳細モーダル用：郵便番号入力時の処理
+  onDetailPostalCodeChange(postalCode: string | null) {
+    if (!postalCode) return;
+    const cleanPostalCode = postalCode.replace(/-/g, '');
+    if (cleanPostalCode.length === 7) {
+      this.searchDetailAddressByPostalCode(cleanPostalCode);
+    }
+  }
+
+  exportDependentsCSV() {
+    if (!this.filteredEmployees || this.filteredEmployees.length === 0) {
+      alert('エクスポートする扶養者情報がありません。');
+      return;
+    }
+
+    // 扶養者CSVのカラム
+    const headers = [
+      '社員ID',
+      '氏名',
+      '扶養者氏名',
+      '続柄',
+      '生年月日',
+      '性別',
+      '同居',
+      '年収',
+      '就業状況',
+      '扶養開始日',
+      '現在も扶養中',
+      '備考'
+    ];
+
+    const rows: string[][] = [];
+    for (const emp of this.filteredEmployees) {
+      if (emp.dependents && Array.isArray(emp.dependents) && emp.dependents.length > 0) {
+        for (const dep of emp.dependents) {
+          rows.push([
+            emp.employee_code || '',
+            (emp.last_name_kanji || '') + (emp.first_name_kanji || ''),
+            dep.name || '',
+            dep.relationship || '',
+            dep.birthdate || '',
+            dep.gender || '',
+            dep.cohabitation ? '同居' : '別居',
+            dep.annualIncome || '',
+            dep.employmentStatus || '',
+            dep.fuyouStartDate || '',
+            dep.isCurrentlyDependent ? '扶養中' : '扶養外',
+            dep.note || ''
+          ]);
+        }
+      }
+    }
+
+    if (rows.length === 0) {
+      alert('エクスポートする扶養者情報がありません。');
+      return;
+    }
+
+    const csvContent = [
+      headers,
+      ...rows
+    ].map(row => row.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dependents_export_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  onClickImportDependents() {
+    if (this.dependentsImportInput) {
+      this.dependentsImportInput.nativeElement.value = '';
+      this.dependentsImportInput.nativeElement.click();
+    }
+  }
+
+  async onImportDependentsFile(event: any) {
+    const file: File = event.target.files[0];
+    if (!file) return;
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    let text = '';
+    if (ext === 'xlsx') {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      text = XLSX.utils.sheet_to_csv(sheet, { FS: ',', RS: '\n' });
+    } else {
+      text = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e: any) => resolve(e.target.result);
+        reader.readAsText(file, 'utf-8');
+      });
+    }
+    // 期待カラム名
+    const excludeFields = ['company_id', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at'];
+    const expectedHeaders = this.employeeFieldOrder
+      .filter(f => !excludeFields.includes(f))
+      .map(f => this.employeeFieldLabels[f] || f);
+    // 1行目を取得
+    const lines = text.split(/\r?\n/).filter((line: string) => line.trim() !== '');
+    const headerLine = lines[0];
+    const headers = headerLine.replace(/^\uFEFF/, '').split(',').map((h: string) => h.replace(/"/g, '').trim());
+    // 厳密一致チェック
+    if (headers.length !== expectedHeaders.length || !headers.every((h: string, i: number) => h === expectedHeaders[i])) {
+      alert('インポートできません：列名や順番が正しくありません。');
+      return;
+    }
+    // 制御文字や不正な文字チェック（簡易）
+    if (/[^\x20-\x7E\u3000-\u30FF\u4E00-\u9FFF\uFF01-\uFF5E\r\n,\"]/.test(text)) {
+      alert('インポートできません：不正な文字が含まれています。');
+      return;
+    }
+    if (!this.companyId) {
+      alert('会社IDが取得できません。ログインし直してください。');
+      return;
+    }
+    // CSVデータをパース
+    const dependentsMap: { [employee_code: string]: any[] } = {};
+    for (let i = 1; i < lines.length; i++) {
+      const row = lines[i].split(',').map((v: string) => v.replace(/"/g, '').trim());
+      if (row.length !== expectedHeaders.length) continue;
+      const employee_code = row[0];
+      if (!employee_code) continue;
+      const dependent = {
+        name: row[2],
+        relationship: row[3],
+        birthdate: row[4],
+        gender: row[5],
+        cohabitation: row[6] === '同居',
+        annualIncome: row[7],
+        employmentStatus: row[8],
+        fuyouStartDate: row[9],
+        isCurrentlyDependent: row[10] === '扶養中',
+        note: row[11]
+      };
+      if (!dependentsMap[employee_code]) dependentsMap[employee_code] = [];
+      dependentsMap[employee_code].push(dependent);
+    }
+    // Firestoreへ保存
+    let errorCount = 0;
+    for (const employee_code of Object.keys(dependentsMap)) {
+      try {
+        const employeesCol = collection(this.firestore, 'employees');
+        const q = query(employeesCol, where('company_id', '==', this.companyId), where('employee_code', '==', employee_code));
+        const snapshot = await getDocs(q);
+        if (snapshot.empty) {
+          errorCount++;
+          continue;
+        }
+        const ref = doc(this.firestore, 'employees', snapshot.docs[0].id);
+        await updateDoc(ref, { dependents: dependentsMap[employee_code], has_dependents: dependentsMap[employee_code].length > 0 });
+      } catch (e) {
+        errorCount++;
+      }
+    }
+    if (errorCount === 0) {
+      alert('インポートが完了しました。');
+      await this.loadEmployees();
+    } else {
+      alert('一部または全ての従業員が見つからなかったため、インポートできませんでした。');
+    }
+  }
+
+  onClickImportEmployees() {
+    if (this.employeesImportInput) {
+      this.employeesImportInput.nativeElement.value = '';
+      this.employeesImportInput.nativeElement.click();
+    }
+  }
+
+  async onImportEmployeesFile(event: any) {
+    const file: File = event.target.files[0];
+    if (!file) return;
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    let text = '';
+    if (ext === 'xlsx') {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      text = XLSX.utils.sheet_to_csv(sheet, { FS: ',', RS: '\n' });
+    } else {
+      text = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e: any) => resolve(e.target.result);
+        reader.readAsText(file, 'utf-8');
+      });
+    }
+    // 期待カラム名
+    const excludeFields = ['company_id', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at'];
+    const expectedHeaders = this.employeeFieldOrder
+      .filter(f => !excludeFields.includes(f))
+      .map(f => this.employeeFieldLabels[f] || f);
+    const lines = text.split(/\r?\n/).filter((line: string) => line.trim() !== '');
+    const headerLine = lines[0];
+    const headers = headerLine.replace(/^\uFEFF/, '').split(',').map((h: string) => h.replace(/"/g, '').trim());
+    if (headers.length !== expectedHeaders.length || !headers.every((h: string, i: number) => h === expectedHeaders[i])) {
+      alert('インポートできません：列名や順番が正しくありません。');
+      return;
+    }
+    if (/[^\x20-\x7E\u3000-\u30FF\u4E00-\u9FFF\uFF01-\uFF5E\r\n,\"]/.test(text)) {
+      alert('インポートできません：不正な文字が含まれています。');
+      return;
+    }
+    if (!this.companyId) {
+      alert('会社IDが取得できません。ログインし直してください。');
+      return;
+    }
+    let errorCount = 0;
+    for (let i = 1; i < lines.length; i++) {
+      const row = lines[i].split(',').map((v: string) => v.replace(/"/g, '').trim());
+      if (row.length !== expectedHeaders.length) continue;
+      const employee_code = row[1];
+      if (!employee_code) continue;
+      // Excelの指数表記を文字列に変換（基礎年金番号・健康保険番号）
+      let pension_number = row[22];
+      let health_insurance_number = row[21];
+      // 指数表記の場合のみ数値としてパースし文字列化、それ以外はそのまま
+      if (/^\d+(\.\d+)?e[\+\-]?\d+$/i.test(pension_number)) {
+        pension_number = String(Number(pension_number));
+      }
+      if (/^\d+(\.\d+)?e[\+\-]?\d+$/i.test(health_insurance_number)) {
+        health_insurance_number = String(Number(health_insurance_number));
+      }
+      // Firestoreで従業員を検索
+      try {
+        const employeesCol = collection(this.firestore, 'employees');
+        const q = query(employeesCol, where('company_id', '==', this.companyId), where('employee_code', '==', employee_code));
+        const snapshot = await getDocs(q);
+        const employeeData: any = {
+          company_id: this.companyId,
+          department_id: row[0],
+          employee_code: row[1],
+          last_name_kanji: row[2],
+          first_name_kanji: row[3],
+          last_name_kana: row[4],
+          first_name_kana: row[5],
+          date_of_birth: row[6],
+          gender: row[7],
+          nationality: row[8],
+          postal_code: row[9],
+          address: row[10],
+          phone_number: row[11],
+          email: row[12],
+          employment_type: row[13],
+          employment_start_date: row[14],
+          employment_end_date: row[15],
+          status: row[16],
+          department: row[17],
+          work_category: row[18],
+          health_insurance_enrolled: row[19] === '加入',
+          pension_insurance_enrolled: row[20] === '加入',
+          health_insurance_number: health_insurance_number,
+          pension_number: pension_number,
+          has_dependents: row[23] === '有',
+          is_dependent: row[24] === 'はい',
+          remarks: row[25],
+          updated_at: new Date()
+        };
+        if (!snapshot.empty) {
+          // 既存従業員を上書き
+          const ref = doc(this.firestore, 'employees', snapshot.docs[0].id);
+          await updateDoc(ref, employeeData);
+        } else {
+          // newEmployeeFormの全フィールドを初期値で埋める
+          const allFields = Object.keys(this.newEmployeeForm.controls);
+          for (const key of allFields) {
+            if (!(key in employeeData)) {
+              // フォームの初期値をセット
+              const ctrl = this.newEmployeeForm.get(key);
+              employeeData[key] = ctrl ? ctrl.value : '';
+            }
+          }
+          employeeData.company_id = this.companyId;
+          employeeData.created_at = new Date();
+          employeeData.updated_at = new Date();
+          await addDoc(employeesCol, employeeData);
+        }
+      } catch (e) {
+        errorCount++;
+      }
+    }
+    if (errorCount === 0) {
+      alert('インポートが完了しました。');
+      await this.loadEmployees();
+    } else {
+      alert('一部または全ての従業員の登録・更新に失敗しました。');
+    }
+  }
+
+  // マイナンバー管理用のメソッド
+  searchMyNumber() {
+    const searchData = this.myNumberSearchForm.value;
+    let filtered = [...this.officeEmployees];
+
+    // 社員IDでフィルタリング
+    if (searchData.employee_id) {
+      filtered = filtered.filter(emp => 
+        emp.employee_code.toLowerCase().includes(searchData.employee_id.toLowerCase())
+      );
+    }
+
+    // 氏名でフィルタリング
+    if (searchData.name) {
+      const searchName = searchData.name.toLowerCase();
+      filtered = filtered.filter(emp => 
+        `${emp.last_name_kanji}${emp.first_name_kanji}`.toLowerCase().includes(searchName)
+      );
+    }
+
+    // 部署でフィルタリング
+    if (searchData.department) {
+      filtered = filtered.filter(emp => 
+        emp.department_id === searchData.department
+      );
+    }
+
+    // マイナンバー登録状況でフィルタリング
+    if (searchData.my_number_status) {
+      if (searchData.my_number_status === 'registered') {
+        filtered = filtered.filter(emp => emp.my_number);
+      } else if (searchData.my_number_status === 'not_registered') {
+        filtered = filtered.filter(emp => !emp.my_number);
+      }
+    }
+
+    this.filteredMyNumberEmployees = filtered;
+  }
+
+  resetMyNumberSearch() {
+    this.myNumberSearchForm.reset();
+    this.filteredMyNumberEmployees = [...this.officeEmployees];
+  }
+
+  // 暗号化用の関数を追加
+  private async encryptMyNumber(myNumber: string): Promise<string> {
+    // 実際の暗号化処理は、セキュリティ要件に応じて実装してください
+    // ここでは簡易的な実装例を示します
+    return btoa(myNumber); // Base64エンコード（実際の実装では、より強力な暗号化を使用してください）
+  }
+
+  // 復号化用の関数を追加
+  private async decryptMyNumber(encryptedMyNumber: string): Promise<string> {
+    // 実際の復号化処理は、セキュリティ要件に応じて実装してください
+    return atob(encryptedMyNumber); // Base64デコード
+  }
+
+  async openMyNumberEdit(employee: any) {
+    this.selectedEmployee = employee;
+    this.showMyNumberEditModal = true;
+
+    // 既存のマイナンバーがある場合は取得して表示
+    if (employee.id) {
+      const sensitiveDoc = await getDoc(doc(this.firestore, 'sensitive_ids', employee.id));
+      if (sensitiveDoc.exists()) {
+        const encryptedMyNumber = sensitiveDoc.data()['myNumber'];
+        if (encryptedMyNumber) {
+          const decryptedMyNumber = await this.decryptMyNumber(encryptedMyNumber);
+          this.myNumberEditForm.patchValue({
+            my_number: decryptedMyNumber
+          });
+        } else {
+          this.myNumberEditForm.patchValue({
+            my_number: ''
+          });
+        }
+      } else {
+        this.myNumberEditForm.patchValue({
+          my_number: ''
+        });
+      }
+    } else {
+      this.myNumberEditForm.patchValue({
+        my_number: ''
+      });
+    }
+
+    this.myNumberEditForm.patchValue({
+      my_number_note: employee.my_number_note || ''
+    });
+  }
+
+  async saveMyNumber() {
+    if (this.myNumberEditForm.valid && this.selectedEmployee) {
+      // idチェック
+      if (!this.selectedEmployee.id) {
+        alert('従業員IDが取得できません。再度従業員を選択してください。');
+        return;
+      }
+      try {
+        const myNumber = this.myNumberEditForm.get('my_number')?.value;
+        const note = this.myNumberEditForm.get('my_number_note')?.value;
+        const now = serverTimestamp();
+
+        // sensitive_idsコレクションの既存データを取得
+        const sensitiveRef = doc(this.firestore, 'sensitive_ids', this.selectedEmployee.id);
+        const sensitiveDoc = await getDoc(sensitiveRef);
+        let sensitiveData: any = {
+          myNumber: await this.encryptMyNumber(myNumber),
+          updated_at: now,
+          my_number_updated_at: now
+        };
+        if (!sensitiveDoc.exists() || !sensitiveDoc.data()['my_number_registered_at']) {
+          sensitiveData.my_number_registered_at = now;
+        } else {
+          sensitiveData.my_number_registered_at = sensitiveDoc.data()['my_number_registered_at'];
+        }
+        await setDoc(sensitiveRef, sensitiveData);
+
+        // 従業員情報を更新
+        await updateDoc(doc(this.firestore, 'employees', this.selectedEmployee.id), {
+          my_number_registered_at: sensitiveData.my_number_registered_at,
+          my_number_updated_at: now,
+          my_number_note: note
+        });
+
+        // 一覧を更新
+        await this.loadOfficeEmployees(this.selectedOfficeId);
+        this.closeMyNumberEdit();
+      } catch (error) {
+        console.error('マイナンバーの保存に失敗しました:', error);
+      }
+    }
+  }
+
+  closeMyNumberEdit() {
+    this.showMyNumberEditModal = false;
+    this.selectedEmployee = null;
+    this.myNumberEditForm.reset();
+  }
+
+  // 事業所一覧を取得する関数
+  async loadOffices() {
+    if (!this.companyId) {
+      console.error('会社IDが設定されていません');
+      return;
+    }
+
+    try {
+      const departmentsCol = collection(this.firestore, 'departments');
+      const q = query(departmentsCol, where('company_id', '==', this.companyId));
+      const snapshot = await getDocs(q);
+      this.offices = snapshot.docs.map(doc => ({
+        id: doc.id,
+        name: doc.data()['department_name'] || doc.data()['department_id']
+      }));
+    } catch (error) {
+      console.error('事業所の取得に失敗しました:', error);
+      this.offices = [];
+    }
+  }
+
+  // 事業所が選択された時の処理
+  async onOfficeSelect() {
+    const officeId = this.myNumberSearchForm.get('office_id')?.value;
+    if (!officeId || !this.companyId) {
+      this.officeEmployees = [];
+      this.filteredMyNumberEmployees = [];
+      this.myNumberSearchForm.get('selected_employee_id')?.setValue('');
+      return;
+    }
+
+    this.selectedOfficeId = officeId;
+    await this.loadOfficeEmployees(officeId);
+    this.filteredMyNumberEmployees = [...this.officeEmployees]; // 初期表示時は全員表示
+  }
+
+  async loadOfficeEmployees(officeId: string) {
+    try {
+      const employeesRef = collection(this.firestore, 'employees');
+      const q = query(
+        employeesRef,
+        where('company_id', '==', this.companyId),
+        where('department_id', '==', officeId)
+      );
+      const querySnapshot = await getDocs(q);
+      const employees = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Employee[];
+
+      // sensitive_idsをまとめて取得
+      const sensitiveIdsPromises = employees.map(emp =>
+        getDoc(doc(this.firestore, 'sensitive_ids', emp.id))
+      );
+      const sensitiveDocs = await Promise.all(sensitiveIdsPromises);
+
+      // myNumberの有無をemployeesに付与
+      employees.forEach((emp, idx) => {
+        const sensitiveDoc = sensitiveDocs[idx];
+        const myNumber = sensitiveDoc.exists() ? sensitiveDoc.data()['myNumber'] : undefined;
+        console.log('従業員ID:', emp.id, 'myNumber:', myNumber, 'hasMyNumber:', !!myNumber);
+        emp.hasMyNumber = !!myNumber;
+      });
+
+      this.officeEmployees = employees;
+    } catch (error) {
+      console.error('従業員情報の取得に失敗しました:', error);
+    }
+  }
+
+  onEmployeeSelect() {
+    const selectedEmployeeId = this.myNumberSearchForm.get('selected_employee_id')?.value;
+    if (selectedEmployeeId) {
+      const selectedEmployee = this.officeEmployees.find(emp => emp.id === selectedEmployeeId);
+      if (selectedEmployee) {
+        this.myNumberSearchForm.patchValue({
+          employee_id: selectedEmployee.employee_code,
+          name: `${selectedEmployee.last_name_kanji} ${selectedEmployee.first_name_kanji}`
+        });
+        this.searchMyNumber(); // 従業員選択時に自動的に検索を実行
+      }
+    } else {
+      this.myNumberSearchForm.patchValue({
+        employee_id: '',
+        name: ''
+      });
+    }
+  }
+
+  // 部署一覧を取得する関数
+  async loadDepartments() {
+    try {
+      const departmentsRef = collection(this.firestore, 'departments');
+      const q = query(departmentsRef, where('company_id', '==', this.companyId));
+      const querySnapshot = await getDocs(q);
+      this.departments = querySnapshot.docs.map(doc => ({
+        department_id: doc.id,
+        ...doc.data()
+      }));
+    } catch (error) {
+      console.error('部署情報の取得に失敗しました:', error);
+    }
+  }
+
+  // 権限チェック用の関数を追加
+  canEditMyNumber(): boolean {
+    return this.currentUserRole === 'admin' || this.currentUserRole === 'hr';
+  }
+
+  async logCurrentEmployeeAndSensitiveId() {
+    // ログインユーザーのメールアドレスと会社IDでemployeesコレクションから自分のドキュメントIDを取得
+    const user = this.auth.currentUser;
+    if (user && user.email && this.companyId) {
+      const employeesCol = collection(this.firestore, 'employees');
+      const q = query(
+        employeesCol,
+        where('company_id', '==', this.companyId),
+        where('email', '==', user.email)
+      );
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const docSnap = snapshot.docs[0];
+        const employeeDocId = docSnap.id;
+        console.log('現在ログイン中のemployeesコレクションのドキュメントID:', employeeDocId);
+        // sensitive_idsコレクションの同じIDも表示
+        const sensitiveDoc = await getDoc(doc(this.firestore, 'sensitive_ids', employeeDocId));
+        if (sensitiveDoc.exists()) {
+          console.log('対応するsensitive_idsコレクションのドキュメントID:', employeeDocId);
+        } else {
+          console.log('対応するsensitive_idsコレクションのドキュメントは存在しません:', employeeDocId);
+        }
+      } else {
+        console.log('ログインユーザーのemployeesコレクションのドキュメントが見つかりませんでした');
+      }
+    } else {
+      console.log('ユーザー情報または会社IDが取得できませんでした');
     }
   }
 }

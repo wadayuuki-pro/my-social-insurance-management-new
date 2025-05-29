@@ -1,0 +1,251 @@
+.insurance-procedures-container {
+  max-width: 1200px;
+  margin: 2rem auto;
+  padding: 2rem;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+}
+
+h2 {
+  color: #1976d2;
+  font-size: 1.5rem;
+  margin-bottom: 2rem;
+  font-weight: bold;
+  text-align: left;
+}
+
+h3 {
+  color: #1976d2;
+  font-size: 1.2rem;
+  margin-bottom: 1.5rem;
+  font-weight: bold;
+}
+
+// タブUI
+.tab-header {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+  border-bottom: 2px solid #e0e0e0;
+  padding-bottom: 0.5rem;
+}
+
+.tab-header button {
+  flex: 1 1 0;
+  padding: 0.8rem 1.2rem;
+  background: #f5f5f5;
+  color: #1976d2;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+  border-bottom: 2px solid transparent;
+}
+
+.tab-header button.active {
+  background: #1976d2;
+  color: #fff;
+  border-bottom: 2px solid #1976d2;
+}
+
+.tab-header button:hover:not(.active) {
+  background: #e3f2fd;
+  color: #1256a3;
+}
+
+// タブコンテンツ
+.tab-content {
+  background: #f8fafc;
+  border-radius: 0 0 12px 12px;
+  padding: 2rem;
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.06);
+  margin-bottom: 2rem;
+}
+
+// 手続き一覧・検索用
+.section {
+  margin-bottom: 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 1.5rem;
+}
+.section label {
+  min-width: 90px;
+  font-weight: 500;
+  color: #1976d2;
+}
+.section select {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #b0bec5;
+  border-radius: 6px;
+  font-size: 1rem;
+  background: #fff;
+  min-width: 140px;
+  margin-left: 0.5em;
+}
+
+.dummy-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.06);
+  overflow: hidden;
+  margin-top: 0.5rem;
+}
+.dummy-table th, .dummy-table td {
+  padding: 0.9rem 0.7rem;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+  font-size: 1rem;
+}
+.dummy-table th {
+  background: #e3f2fd;
+  color: #1976d2;
+  font-weight: bold;
+}
+.dummy-table tr:last-child td {
+  border-bottom: none;
+}
+.dummy-table tr:hover {
+  background: #f1f8fe;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.3em 1em;
+  border-radius: 16px;
+  font-size: 0.95em;
+  font-weight: bold;
+  background: #e0e0e0;
+  color: #555;
+}
+.status-badge.pending {
+  background: #fff3e0;
+  color: #f57c00;
+}
+.status-badge.in-progress {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+.status-badge.completed {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+.status-badge.approved {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+.status-badge.rejected {
+  background: #ffebee;
+  color: #d32f2f;
+}
+
+// 汎用ボタン
+.btn {
+  padding: 0.8rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: #1976d2;
+  color: #fff;
+}
+.btn:hover {
+  opacity: 0.9;
+  background: #1256a3;
+}
+
+// レスポンシブ
+@media (max-width: 768px) {
+  .insurance-procedures-container {
+    padding: 1rem;
+    margin: 1rem;
+  }
+  .tab-header {
+    flex-direction: column;
+  }
+  .tab-header button {
+    width: 100%;
+  }
+  .tab-content {
+    padding: 1rem;
+  }
+  .section {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.7rem;
+  }
+  .dummy-table th, .dummy-table td {
+    font-size: 0.95rem;
+    padding: 0.5rem 0.3rem;
+  }
+}
+
+// 各種届出作成フォーム
+.procedure-form {
+  max-width: 600px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2em;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.08);
+  padding: 2em 2em 1.5em 2em;
+}
+.procedure-form label {
+  font-weight: 500;
+  color: #1976d2;
+  margin-bottom: 0.3em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+}
+.procedure-form input[type="text"],
+.procedure-form select,
+.procedure-form input[type="file"] {
+  padding: 0.7em;
+  border: 1px solid #b0bec5;
+  border-radius: 7px;
+  font-size: 1rem;
+  background: #fff;
+  margin-top: 0.2em;
+}
+.procedure-form input[type="file"] {
+  padding: 0.3em 0.2em;
+}
+.procedure-form .file-name {
+  margin-left: 0.7em;
+  color: #1976d2;
+  font-size: 0.98em;
+}
+.procedure-form .form-actions {
+  display: flex;
+  gap: 1em;
+  align-items: center;
+  margin-top: 0.5em;
+}
+.procedure-form .form-error {
+  color: #d32f2f;
+  font-size: 1em;
+  margin-top: 0.2em;
+}
+.procedure-form .form-success {
+  color: #2e7d32;
+  font-size: 1em;
+  margin-top: 0.2em;
+}
+
+@media (max-width: 768px) {
+  .procedure-form {
+    padding: 1em 0.5em;
+  }
+}
