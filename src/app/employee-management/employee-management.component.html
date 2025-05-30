@@ -298,6 +298,8 @@
                   <select [formControlName]="field" (change)="onNewStatusChange()">
                     <option value="">選択してください</option>
                     <option value="在籍中">在籍中</option>
+                    <option value="海外赴任">海外赴任</option>
+                    <option value="出向中">出向中</option>
                     <option value="休職中">休職中</option>
                     <option value="産休中">産休中</option>
                     <option value="育休中">育休中</option>
@@ -332,9 +334,9 @@
                     <option value="再雇用">再雇用</option>
                     <option value="役員">役員</option>
                   </select>
-                  <ng-container *ngIf="newEmployeeForm.get('employment_type')?.value === 'アルバイト' || newEmployeeForm.get('employment_type')?.value === 'パートタイム'">
+                  <ng-container *ngIf="['アルバイト','パートタイム','契約社員','インターン・研修生'].includes(newEmployeeForm.get('employment_type')?.value)">
                     <div class="detail-row">
-                      <label>所定労働時間</label>
+                      <label>所定労働時間（/月）</label>
                       <input formControlName="scheduled_working_hours" placeholder="例：80時間/月" />
                     </div>
                     <div class="detail-row">
@@ -511,6 +513,8 @@
                     <select [formControlName]="field" (change)="onStatusChange()">
                       <option value="">選択してください</option>
                       <option value="在籍中">在籍中</option>
+                      <option value="海外赴任">海外赴任</option>
+                      <option value="出向中">出向中</option>
                       <option value="休職中">休職中</option>
                       <option value="産休中">産休中</option>
                       <option value="育休中">育休中</option>
@@ -545,9 +549,9 @@
                       <option value="再雇用">再雇用</option>
                       <option value="役員">役員</option>
                     </select>
-                    <ng-container *ngIf="detailForm.get('employment_type')?.value === 'アルバイト' || detailForm.get('employment_type')?.value === 'パートタイム'">
+                    <ng-container *ngIf="['アルバイト','パートタイム','契約社員','インターン・研修生'].includes(detailForm.get('employment_type')?.value)">
                       <div class="detail-row">
-                        <label>所定労働時間</label>
+                        <label>所定労働時間（/月）</label>
                         <input formControlName="scheduled_working_hours" placeholder="例：80時間/月" />
                       </div>
                       <div class="detail-row">
@@ -737,7 +741,7 @@
         </div>
         <form [formGroup]="partTimeFieldsForm" style="display: flex; flex-direction: column; gap: 0.7rem;">
           <div class="detail-row">
-            <label>所定労働時間</label>
+            <label>所定労働時間（/月）</label>
             <input formControlName="scheduled_working_hours" placeholder="例：80時間/月" />
           </div>
           <div class="detail-row">
@@ -902,21 +906,73 @@
   <div class="tab-content" *ngIf="activeTab === 'insurance'">
     <h1>保険適用判定</h1>
     <div class="insurance-judgement-section">
-      <div class="judgement-info">
+      <div class="judgement-office-select" style="margin-bottom:1.5em;">
+        <label for="insuranceOfficeSelect">事業所を選択：</label>
+        <select id="insuranceOfficeSelect" [(ngModel)]="selectedInsuranceOfficeId" (change)="onInsuranceOfficeSelect()">
+          <option value="">選択してください</option>
+          <option *ngFor="let office of offices" [value]="office.id">{{ office.name }}</option>
+        </select>
+      </div>
+      <div *ngIf="insuranceOfficeEmployees.length > 0">
+        <table class="my-number-table">
+          <thead>
+            <tr>
+              <th>社員ID</th>
+              <th>氏名</th>
+              <th>健康保険</th>
+              <th>介護保険</th>
+              <th>厚生年金</th>
+              <th>注意事項</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let emp of insuranceOfficeEmployees">
+              <td>{{ emp.employee_code }}</td>
+              <td>{{ emp.last_name_kanji }} {{ emp.first_name_kanji }}</td>
+              <td>
+                <label><input type="radio" name="healthInsuranceStatus_{{emp.id}}" value="in" [checked]="emp.healthInsuranceStatus === 'in'"> 適用内</label>
+                <label style="margin-left:1em;"><input type="radio" name="healthInsuranceStatus_{{emp.id}}" value="out" [checked]="emp.healthInsuranceStatus === 'out'"> 適用外</label>
+                <div *ngIf="emp.healthInsuranceStatus === 'out'" style="color:#d32f2f; font-size:0.95em; margin-top:0.2em;">{{ emp.healthInsuranceReason }}</div>
+              </td>
+              <td>
+                <label><input type="radio" name="nursingInsuranceStatus_{{emp.id}}" value="in" [checked]="emp.nursingInsuranceStatus === 'in'"> 適用内</label>
+                <label style="margin-left:1em;"><input type="radio" name="nursingInsuranceStatus_{{emp.id}}" value="out" [checked]="emp.nursingInsuranceStatus === 'out'"> 適用外</label>
+                <div *ngIf="emp.nursingInsuranceStatus === 'out'" style="color:#d32f2f; font-size:0.95em; margin-top:0.2em;">{{ emp.nursingInsuranceReason }}</div>
+              </td>
+              <td>
+                <label><input type="radio" name="pensionInsuranceStatus_{{emp.id}}" value="in" [checked]="emp.pensionInsuranceStatus === 'in'"> 適用内</label>
+                <label style="margin-left:1em;"><input type="radio" name="pensionInsuranceStatus_{{emp.id}}" value="out" [checked]="emp.pensionInsuranceStatus === 'out'"> 適用外</label>
+                <div *ngIf="emp.pensionInsuranceStatus === 'out'" style="color:#d32f2f; font-size:0.95em; margin-top:0.2em;">{{ emp.pensionInsuranceReason }}</div>
+              </td>
+              <td>
+                <ng-container *ngIf="emp.healthInsuranceRequiredActions?.length || emp.nursingInsuranceRequiredActions?.length || emp.pensionInsuranceRequiredActions?.length; else noActions">
+                  <div style="color:#1976d2; font-size:0.95em; max-width: 320px; display: flex; align-items: center;">
+                    <span *ngIf="getRequiredActionsSummary(emp).length > 30; else shortText" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; max-width: 220px;">
+                      {{ getRequiredActionsSummary(emp) | slice:0:30 }}…
+                    </span>
+                    <button *ngIf="getRequiredActionsSummary(emp).length > 30"
+                      type="button"
+                      (click)="openActionsModal(emp)"
+                      style="color:#1976d2; background:none; border:none; text-decoration:underline; cursor:pointer; padding:0; font-size:0.95em; margin-left: 0.5em;">
+                      もっと見る
+                    </button>
+                    <ng-template #shortText>
+                      <span>{{ getRequiredActionsSummary(emp) }}</span>
+                    </ng-template>
+                  </div>
+                </ng-container>
+                <ng-template #noActions>
+                  <div style="color:#4caf50; font-size:0.95em;">特になし</div>
+                </ng-template>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div *ngIf="insuranceOfficeEmployees.length === 0" style="color:#888; margin-top:2em;">該当する従業員がいません</div>
+      <div class="judgement-info" style="margin-top:2em;">
         <h3>判定理由</h3>
         <p>この従業員は「雇用形態：パート」「月収見込み：8万円未満」などの条件により、健康保険は<strong>適用外</strong>となっています。</p>
-      </div>
-      <div class="judgement-action">
-        <h3>担当者による判定</h3>
-        <label>
-          <input type="radio" name="insuranceStatus" value="in" /> 適用内
-        </label>
-        <label style="margin-left:2em;">
-          <input type="radio" name="insuranceStatus" value="out" /> 適用外
-        </label>
-        <div style="margin-top:1em;">
-          <button style="background:#1976d2; color:#fff; padding:0.5em 1.5em; border-radius:5px;">保存</button>
-        </div>
       </div>
     </div>
   </div>
@@ -924,3 +980,19 @@
 
 <!-- Material Icons CDN（なければhead等に追加してください） -->
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+<!-- 注意事項全文表示用モーダル（テーブル外・ルート直下に移動） -->
+<div class="employee-detail-modal" *ngIf="showActionsModal">
+  <div class="employee-detail-modal-content" style="max-width:500px;">
+    <div class="modal-header">
+      <h2>注意事項の全文表示</h2>
+      <button type="button" class="close-button" (click)="closeActionsModal()">×</button>
+    </div>
+    <div style="font-size:1.05em; color:#1976d2; white-space:pre-line;">
+      {{ getRequiredActionsSummary(selectedActionsEmployee) }}
+    </div>
+    <div style="margin-top:1.5em; text-align:right;">
+      <button type="button" (click)="closeActionsModal()">閉じる</button>
+    </div>
+  </div>
+</div>

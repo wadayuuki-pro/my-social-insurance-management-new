@@ -27,6 +27,29 @@ interface Employee {
   uid?: string;
   [key: string]: any;
   hasMyNumber?: boolean;
+  healthInsuranceStatus?: string;
+  nursingInsuranceStatus?: string;
+  pensionInsuranceStatus?: string;
+  healthInsuranceReason?: string;
+  nursingInsuranceReason?: string;
+  pensionInsuranceReason?: string;
+  healthInsuranceRequiredActions?: string[];
+  nursingInsuranceRequiredActions?: string[];
+  pensionInsuranceRequiredActions?: string[];
+  employment_type?: string;
+  status?: string;
+  date_of_birth?: string;
+  scheduled_working_hours?: string;
+  expected_monthly_income?: number;
+  student_category?: string;
+  employment_start_date?: string;
+  office_id?: string;
+}
+
+interface InsuranceEligibility {
+  isEligible: boolean;
+  reason: string;
+  requiredActions?: string[];
 }
 
 @Component({
@@ -213,6 +236,74 @@ export class EmployeeManagementComponent implements OnInit {
   // ログインユーザーのマイナンバー登録状況を取得するプロパティ
   public isMyNumberRegistered: boolean = false;
 
+  selectedInsuranceOfficeId: string = '';
+  insuranceOfficeEmployees: Employee[] = [];
+
+  // 注意事項全文表示用
+  showActionsModal: boolean = false;
+  selectedActionsEmployee: any = null;
+
+  getRequiredActionsSummary(emp: any): string {
+    // どこか1つでも「休職中です。有給か無給かを確認し判断してください」が含まれていたらそれだけ返す
+    const leaveMsg = '休職中です。有給か無給かを確認し判断してください';
+    if (
+      (emp.healthInsuranceRequiredActions && emp.healthInsuranceRequiredActions.includes(leaveMsg)) ||
+      (emp.nursingInsuranceRequiredActions && emp.nursingInsuranceRequiredActions.includes(leaveMsg)) ||
+      (emp.pensionInsuranceRequiredActions && emp.pensionInsuranceRequiredActions.includes(leaveMsg))
+    ) {
+      return leaveMsg;
+    }
+    // どちらかのrequiredActionsが「短時間労働者です」だけの場合はそれだけ返す
+    const isShortTimeOnly = (arr: string[] | undefined) =>
+      arr && arr.length === 1 && arr[0] === '短時間労働者です';
+    if (
+      (isShortTimeOnly(emp.healthInsuranceRequiredActions) && (!emp.nursingInsuranceRequiredActions || emp.nursingInsuranceRequiredActions.length === 0) && (!emp.pensionInsuranceRequiredActions || emp.pensionInsuranceRequiredActions.length === 0)) ||
+      (isShortTimeOnly(emp.pensionInsuranceRequiredActions) && (!emp.nursingInsuranceRequiredActions || emp.nursingInsuranceRequiredActions.length === 0) && (!emp.healthInsuranceRequiredActions || emp.healthInsuranceRequiredActions.length === 0))
+    ) {
+      return '短時間労働者です';
+    }
+    // どちらかのrequiredActionsが「非正規労働者です」だけの場合はそれだけ返す
+    const isNonRegularOnly = (arr: string[] | undefined) =>
+      arr && arr.length === 1 && arr[0] === '非正規労働者です';
+    if (
+      (isNonRegularOnly(emp.healthInsuranceRequiredActions) && (!emp.nursingInsuranceRequiredActions || emp.nursingInsuranceRequiredActions.length === 0) && (!emp.pensionInsuranceRequiredActions || emp.pensionInsuranceRequiredActions.length === 0)) ||
+      (isNonRegularOnly(emp.pensionInsuranceRequiredActions) && (!emp.nursingInsuranceRequiredActions || emp.nursingInsuranceRequiredActions.length === 0) && (!emp.healthInsuranceRequiredActions || emp.healthInsuranceRequiredActions.length === 0))
+    ) {
+      return '非正規労働者です';
+    }
+    // どこか1つでも「海外赴任中です。」が含まれていたらそれだけ返す
+    const overseasMsg = '海外赴任中です。';
+    if (
+      (emp.healthInsuranceRequiredActions && emp.healthInsuranceRequiredActions.includes(overseasMsg)) ||
+      (emp.nursingInsuranceRequiredActions && emp.nursingInsuranceRequiredActions.includes(overseasMsg)) ||
+      (emp.pensionInsuranceRequiredActions && emp.pensionInsuranceRequiredActions.includes(overseasMsg))
+    ) {
+      return overseasMsg;
+    }
+
+    let summary = '';
+    if (emp.healthInsuranceRequiredActions?.length) {
+      summary += '健康保険：' + emp.healthInsuranceRequiredActions.join('、') + '\n';
+    }
+    if (emp.nursingInsuranceRequiredActions?.length) {
+      summary += '介護保険：' + emp.nursingInsuranceRequiredActions.join('、') + '\n';
+    }
+    if (emp.pensionInsuranceRequiredActions?.length) {
+      summary += '厚生年金：' + emp.pensionInsuranceRequiredActions.join('、') + '\n';
+    }
+    return summary.trim();
+  }
+
+  openActionsModal(emp: any) {
+    this.selectedActionsEmployee = emp;
+    this.showActionsModal = true;
+  }
+
+  closeActionsModal() {
+    this.showActionsModal = false;
+    this.selectedActionsEmployee = null;
+  }
+
   constructor(
     private auth: Auth,
     private firestore: Firestore,
@@ -395,9 +486,9 @@ export class EmployeeManagementComponent implements OnInit {
   }
 
   async ngOnInit() {
-    this.authService.companyId$.subscribe(async companyId => {
-      if (companyId) {
-        this.companyId = companyId;
+        this.authService.companyId$.subscribe(async companyId => {
+          if (companyId) {
+            this.companyId = companyId;
         await this.loadEmployees();
       }
     });
@@ -905,40 +996,9 @@ export class EmployeeManagementComponent implements OnInit {
       this.departments = snapshot.docs.map(doc => doc.data());
     }
 
-    this.newEmployeeForm = this.fb.group({
-      employee_code: ['', Validators.required],
-      last_name_kanji: ['', Validators.required],
-      first_name_kanji: ['', Validators.required],
-      last_name_kana: ['', [Validators.required, this.katakanaValidator]],
-      first_name_kana: ['', [Validators.required, this.katakanaValidator]],
-      email: ['', [Validators.required, Validators.email]],
-      department_id: ['', Validators.required],
-      company_id: [this.companyId],
-      role: [''],
-      employment_type: [''],
-      status: ['在籍中'],
-      gender: [''],
-      date_of_birth: [''],
-      employment_start_date: [''],
-      employment_end_date: [''],
-      postal_code: [''],
-      address: [''],
-      phone_number: [''],
-      emergency_contact: [''],
-      health_insurance_enrolled: [false],
-      health_insurance_enrollment_date: [''],
-      health_insurance_withdrawal_date: [''],
-      health_insurance_number: [''],
-      pension_insurance_enrolled: [false],
-      pension_insurance_enrollment_date: [''],
-      pension_insurance_withdrawal_date: [''],
-      pension_number: [''],
-      has_dependents: [false],
-      is_dependent: [false],
-      dependents: this.fb.array([])
-    });
-
-    // 所属会社IDを編集不可に設定
+    // フォームをリセットし、会社IDだけセット
+    this.newEmployeeForm.reset();
+    this.newEmployeeForm.get('company_id')?.setValue(this.companyId);
     this.newEmployeeForm.get('company_id')?.disable();
 
     this.showNewEmployeeModal = true;
@@ -1640,7 +1700,7 @@ export class EmployeeManagementComponent implements OnInit {
         const encryptedMyNumber = sensitiveDoc.data()['myNumber'];
         if (encryptedMyNumber) {
           const decryptedMyNumber = await this.decryptMyNumber(encryptedMyNumber);
-          this.myNumberEditForm.patchValue({
+    this.myNumberEditForm.patchValue({
             my_number: decryptedMyNumber
           });
         } else {
@@ -1759,8 +1819,8 @@ export class EmployeeManagementComponent implements OnInit {
       );
       const querySnapshot = await getDocs(q);
       const employees = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
+          id: doc.id,
+          ...doc.data()
       })) as Employee[];
 
       // sensitive_idsをまとめて取得
@@ -1851,4 +1911,345 @@ export class EmployeeManagementComponent implements OnInit {
       console.log('ユーザー情報または会社IDが取得できませんでした');
     }
   }
+
+  async onInsuranceOfficeSelect() {
+    if (!this.selectedInsuranceOfficeId || !this.companyId) {
+      this.insuranceOfficeEmployees = [];
+      return;
+    }
+    await this.loadInsuranceOfficeEmployees(this.selectedInsuranceOfficeId);
+  }
+
+  async loadInsuranceOfficeEmployees(officeId: string): Promise<Employee[]> {
+    try {
+      const employeesRef = collection(this.firestore, 'employees');
+      const q = query(
+        employeesRef,
+        where('company_id', '==', this.companyId),
+        where('department_id', '==', officeId)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const employees = querySnapshot.docs.map(doc => {
+        const employee = { id: doc.id, ...doc.data() } as Employee;
+        // 保険適用判定を実行
+        this.updateInsuranceEligibility(employee);
+        return employee;
+      })
+      // 退職者を除外
+      .filter(emp => emp.status !== '退職');
+      this.insuranceOfficeEmployees = employees;
+      return employees;
+    } catch (error) {
+      console.error('Error loading office employees:', error);
+      this.insuranceOfficeEmployees = [];
+      return [];
+    }
+  }
+
+  // 健康保険の適用判定
+  checkHealthInsuranceEligibility(employee: any): InsuranceEligibility {
+    // 派遣社員は派遣元で管理するため、適用外
+    if (employee.employment_type === '派遣社員') {
+      return {
+        isEligible: false,
+        reason: '派遣社員は派遣元で管理するため、適用外です。',
+      };
+    }
+
+    // 退職者は適用外
+    if (employee.status === '退職') {
+      return {
+        isEligible: false,
+        reason: '退職者は適用外です。',
+        requiredActions: ['退職者は適用外です。']
+      };
+    }
+
+    const result: InsuranceEligibility = {
+      isEligible: false,
+      reason: '',
+      requiredActions: []
+    };
+
+    // 産休・育休中は適用外
+    if (employee.status === '産休中' || employee.status === '育休中') {
+      result.reason = '産休・育休中のため適用外';
+      return result;
+    }
+
+    // 正社員は常に適用
+    if (employee.employment_type === '正社員') {
+      result.isEligible = true;
+      result.reason = '正社員のため適用';
+      return result;
+    }
+
+    // パート・アルバイト・契約社員・インターン・研修生の場合
+    if (employee.employment_type === 'パートタイム' || 
+        employee.employment_type === 'アルバイト' || 
+        employee.employment_type === '契約社員' || 
+        employee.employment_type === 'インターン・研修生') {
+      const weeklyHours = this.calculateWeeklyHours(employee.scheduled_working_hours);
+      const monthlyIncome = employee.expected_monthly_income || 0;
+      const isStudent = employee.student_category === '昼間学生';
+      const employmentDuration = this.calculateEmploymentDurationByContract(employee.employment_contract_period);
+
+      if (weeklyHours >= 30) {
+        result.isEligible = true;
+        result.reason = '週30時間以上のため年齢要件のみで適用';
+      } else if (this.isLargeCompany()) {
+        // 51人以上：従来通り
+        if (weeklyHours >= 20 && monthlyIncome >= 88000 && employmentDuration >= (2/12) && !isStudent) {
+          result.isEligible = true;
+          result.reason = '非正規労働者（51人以上）で全条件を満たしているため適用';
+        } else {
+          result.reason = '非正規労働者（51人以上）で全条件を満たしていないため適用外';
+          if (weeklyHours < 20) result.requiredActions?.push('週20時間以上の勤務が必要');
+          if (monthlyIncome < 88000) result.requiredActions?.push('月収8.8万円以上が必要');
+          if (employmentDuration < (2/12)) result.requiredActions?.push('2ヶ月以上の雇用契約が必要');
+          if (isStudent) result.requiredActions?.push('学生は適用外');
+        }
+      } else {
+        // 51人未満：従来通り
+        if (weeklyHours >= 20 && monthlyIncome >= 88000 && employmentDuration >= (2/12) && !isStudent) {
+          result.isEligible = true;
+          result.reason = '非正規労働者（50人以下）で全条件を満たしているため適用';
+        } else {
+          result.reason = '非正規労働者（50人以下）で全条件を満たしていないため適用外';
+          if (weeklyHours < 20) result.requiredActions?.push('週20時間以上の勤務が必要');
+          if (monthlyIncome < 88000) result.requiredActions?.push('月収8.8万円以上が必要');
+          if (employmentDuration < (2/12)) result.requiredActions?.push('2ヶ月以上の雇用契約が必要');
+          if (isStudent) result.requiredActions?.push('学生は適用外');
+        }
+      }
+    }
+
+    // 休職中の注意事項
+    if (employee.status === '休職中') {
+      result.requiredActions?.push('休職中です。有給か無給かを確認し判断してください');
+    }
+    // 海外赴任中の注意事項
+    if (employee.status === '海外赴任') {
+      result.requiredActions?.push('海外赴任中です。');
+    }
+    return result;
+  }
+
+  // 介護保険の適用判定
+  checkNursingInsuranceEligibility(employee: any): InsuranceEligibility {
+    // 派遣社員は派遣元で管理するため、適用外
+    if (employee.employment_type === '派遣社員') {
+      return {
+        isEligible: false,
+        reason: '派遣社員は派遣元で管理するため、適用外です。',
+        
+      };
+    }
+
+    // 退職者は適用外
+    if (employee.status === '退職') {
+      return {
+        isEligible: false,
+        reason: '退職者は適用外です。',
+        requiredActions: ['退職者は適用外です。']
+      };
+    }
+
+    const result: InsuranceEligibility = {
+      isEligible: false,
+      reason: '',
+      requiredActions: []
+    };
+
+    // 年齢チェック
+    const age = this.calculateAge(employee.date_of_birth);
+    if (age < 40 || age >= 65) {
+      result.reason = `${age < 40 ? '40歳未満' : '65歳以上'}のため適用外`;
+      return result;
+    }
+
+    // 健康保険の適用チェック
+    const healthInsuranceEligibility = this.checkHealthInsuranceEligibility(employee);
+    if (!healthInsuranceEligibility.isEligible) {
+      result.reason = '健康保険の適用対象外のため適用外';
+      result.requiredActions = healthInsuranceEligibility.requiredActions;
+      return result;
+    }
+
+    result.isEligible = true;
+    result.reason = '40歳以上65歳未満で健康保険適用対象のため適用';
+    return result;
+  }
+
+  // 厚生年金の適用判定
+  checkPensionInsuranceEligibility(employee: any): InsuranceEligibility {
+    // 派遣社員は派遣元で管理するため、適用外
+    if (employee.employment_type === '派遣社員') {
+      return {
+        isEligible: false,
+        reason: '派遣社員は派遣元で管理するため、適用外です。',
+        
+      };
+    }
+
+    // 退職者は適用外
+    if (employee.status === '退職') {
+      return {
+        isEligible: false,
+        reason: '退職者は適用外です。',
+        requiredActions: ['退職者は適用外です。']
+      };
+    }
+
+    const result: InsuranceEligibility = {
+      isEligible: false,
+      reason: '',
+      requiredActions: []
+    };
+
+    // 産休・育休中は適用外
+    if (employee.status === '産休中' || employee.status === '育休中') {
+      result.reason = '産休・育休中のため適用外';
+      return result;
+    }
+
+    // 70歳以上は適用外
+    const age = this.calculateAge(employee.date_of_birth);
+    if (age >= 70) {
+      result.reason = '70歳以上のため適用外';
+      return result;
+    }
+
+    // 正社員は常に適用
+    if (employee.employment_type === '正社員') {
+      result.isEligible = true;
+      result.reason = '正社員のため適用';
+      return result;
+    }
+
+    // パート・アルバイトの場合
+    if (
+      employee.employment_type === 'パートタイム' ||
+      employee.employment_type === 'アルバイト' ||
+      employee.employment_type === '契約社員' ||
+      employee.employment_type === 'インターン・研修生'
+    ) {
+      const weeklyHours = this.calculateWeeklyHours(employee.scheduled_working_hours);
+      const monthlyIncome = employee.expected_monthly_income || 0;
+      const isStudent = employee.student_category === '昼間学生';
+      const employmentDuration = this.calculateEmploymentDurationByContract(employee.employment_contract_period);
+
+      if (weeklyHours >= 30 && !isStudent) {
+        result.isEligible = true;
+        result.reason = '週30時間以上かつ昼間学生でないため無条件で適用';
+      } else if (weeklyHours >= 30 && isStudent) {
+        result.isEligible = false;
+        result.reason = '週30時間以上だが昼間学生のため適用外';
+      } else if (this.isLargeCompany()) {
+        // 51人以上：従来通り
+        if (weeklyHours >= 20 && monthlyIncome >= 88000 && employmentDuration >= (2/12) && !isStudent) {
+          result.isEligible = true;
+          result.reason = '非正規労働者（51人以上）で全条件を満たしているため適用';
+        } else {
+          result.reason = '非正規労働者（51人以上）で全条件を満たしていないため適用外';
+          if (weeklyHours < 20) result.requiredActions?.push('週20時間以上の勤務が必要');
+          if (monthlyIncome < 88000) result.requiredActions?.push('月収8.8万円以上が必要');
+          if (employmentDuration < (2/12)) result.requiredActions?.push('2ヶ月以上の雇用契約が必要');
+          if (isStudent) result.requiredActions?.push('学生は適用外');
+        }
+      } else {
+        // 51人未満：従来通り
+        if (weeklyHours >= 20 && monthlyIncome >= 88000 && employmentDuration >= (2/12) && !isStudent) {
+          result.isEligible = true;
+          result.reason = '非正規労働者（50人以下）で全条件を満たしているため適用';
+        } else {
+          result.reason = '非正規労働者（50人以下）で全条件を満たしていないため適用外';
+          if (weeklyHours < 20) result.requiredActions?.push('週20時間以上の勤務が必要');
+          if (monthlyIncome < 88000) result.requiredActions?.push('月収8.8万円以上が必要');
+          if (employmentDuration < (2/12)) result.requiredActions?.push('2ヶ月以上の雇用契約が必要');
+          if (isStudent) result.requiredActions?.push('学生は適用外');
+        }
+      }
+      if (result.requiredActions && result.requiredActions.length === 0) {
+        result.requiredActions.push('非正規労働者です');
+      }
+    }
+
+    // 休職中の注意事項
+    if (employee.status === '休職中') {
+      result.requiredActions?.push('休職中です。有給か無給かを確認し判断してください');
+    }
+    // 海外赴任中の注意事項
+    if (employee.status === '海外赴任') {
+      result.requiredActions?.push('海外赴任中です。');
+    }
+    return result;
+  }
+
+  // ヘルパーメソッド
+  private calculateWeeklyHours(scheduledHours: string): number {
+    // 月間所定労働時間から週間労働時間を計算
+    // 例: "80時間/月" の場合、80 ÷ 4.33 ≈ 18.5時間/週
+    if (!scheduledHours) return 0;
+    const monthlyHours = parseInt(scheduledHours);
+    return monthlyHours / 4.33;
+  }
+
+  private calculateAge(dateOfBirth: string): number {
+    if (!dateOfBirth) return 0;
+    const birthDate = new Date(dateOfBirth);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  }
+
+  private calculateEmploymentDurationByContract(contractPeriod: string): number {
+    if (!contractPeriod) return 0;
+    const [start, end] = contractPeriod.split('～').map(s => s.trim());
+    if (!start) return 0;
+    const startDate = new Date(start.replace(/-/g, '/'));
+    let endDate: Date;
+    if (end) {
+      if (!end.match(/^\d{4}[\/\-]\d{2}[\/\-]\d{2}$/)) return 0; // 終了日が日付でない場合は0年扱い
+      endDate = new Date(end.replace(/-/g, '/'));
+    } else {
+      // 終了日未定（無期雇用）は十分長い期間とみなす
+      return 99;
+    }
+    return (endDate.getFullYear() - startDate.getFullYear()) +
+           (endDate.getMonth() - startDate.getMonth()) / 12;
+  }
+
+  // 会社の規模を判定するロジック
+  // 51人以上ならtrue, 50人以下ならfalse
+  private isLargeCompany(): boolean {
+    // 実際の実装では、会社情報から従業員数を取得して判定
+    // ここでは仮に従業員配列で判定
+    return this.employees.length >= 51;
+  }
+
+  // 保険適用判定の更新
+  updateInsuranceEligibility(employee: any) {
+    const healthInsurance = this.checkHealthInsuranceEligibility(employee);
+    const nursingInsurance = this.checkNursingInsuranceEligibility(employee);
+    const pensionInsurance = this.checkPensionInsuranceEligibility(employee);
+
+    employee.healthInsuranceStatus = healthInsurance.isEligible ? 'in' : 'out';
+    employee.healthInsuranceReason = healthInsurance.reason;
+    employee.healthInsuranceRequiredActions = healthInsurance.requiredActions;
+
+    employee.nursingInsuranceStatus = nursingInsurance.isEligible ? 'in' : 'out';
+    employee.nursingInsuranceReason = nursingInsurance.reason;
+    employee.nursingInsuranceRequiredActions = nursingInsurance.requiredActions;
+
+    employee.pensionInsuranceStatus = pensionInsurance.isEligible ? 'in' : 'out';
+    employee.pensionInsuranceReason = pensionInsurance.reason;
+    employee.pensionInsuranceRequiredActions = pensionInsurance.requiredActions;
+  }
 }
+
