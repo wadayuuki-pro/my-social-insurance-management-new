@@ -150,7 +150,12 @@
                 <td>{{ s.avgLast3 | number:'1.0-0' }}円</td>
                 <td>{{ s.gradePrev3 || '-' }}</td>
                 <td>{{ s.gradeLast3 || '-' }}</td>
-                <td>{{ s.result }}</td>
+                <td [ngClass]="{
+                  'text-warning': s.result === '直近の給与なし',
+                  'text-danger': s.result === '2等級以上の変動あり',
+                  'text-success': s.result === '変動なし',
+                  'text-info': s.result === '等級判定不可'
+                }">{{ s.result }}</td>
               </tr>
             </tbody>
           </table>

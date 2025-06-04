@@ -158,13 +158,14 @@ export class EmployeeManagementComponent implements OnInit {
     email: '例：taro@example.com',
     address: '例：東京都新宿区1-2-3',
     postal_code: '例：123-4567',
-    my_number: '例：123456789012',
     department: '例：営業部',
     work_category: '例：部長',
     health_insurance_number: '例：12345678(8桁)',
     pension_number: '例：123456789012(12桁 ハイフンなし)',
     remarks: '例：特記事項など',
-    password: '初期パスワードは自動生成'
+    password: '初期パスワードは自動生成',
+    role: 'ここでは権限は設定できません'
+    
   };
 
   employeeFieldOrder: string[] = [
@@ -273,8 +274,7 @@ export class EmployeeManagementComponent implements OnInit {
   // 特記事項の選択肢を追加
   remarksOptions: string[] = [
     'なし',
-    '副業先',
-    'その他'
+    '副業先'
   ];
 
   getRequiredActionsSummary(emp: any): string {
@@ -601,6 +601,12 @@ export class EmployeeManagementComponent implements OnInit {
     const snapshot = await getDocs(q);
     this.employees = snapshot.docs.map(doc => doc.data());
     this.filteredEmployees = [...this.employees];
+    // departmentフィールドのユニーク値を抽出
+    const deptSet = new Set<string>();
+    for (const emp of this.employees) {
+      deptSet.add(emp.department && emp.department.trim() ? emp.department : '-');
+    }
+    this.departmentSearchOptionsForEmployee = Array.from(deptSet);
   }
 
   filterEmployees(employeeId: string) {
@@ -631,7 +637,7 @@ export class EmployeeManagementComponent implements OnInit {
     }
 
     if (searchValues.department) {
-      filtered = filtered.filter(emp => emp.department_id === searchValues.department);
+      filtered = filtered.filter(emp => (emp.department && emp.department.trim() ? emp.department : '-') === searchValues.department);
     }
 
     if (searchValues.employment_type) {
@@ -751,6 +757,8 @@ export class EmployeeManagementComponent implements OnInit {
       if (key === 'company_id') {
         this.detailForm.addControl(key, this.fb.control({ value: emp[key], disabled: true }));
       } else if (key === 'password') {
+        this.detailForm.addControl(key, this.fb.control({ value: emp[key], disabled: true }));
+      } else if (key === 'role') {
         this.detailForm.addControl(key, this.fb.control({ value: emp[key], disabled: true }));
       } else if (key === 'dependents') {
         // 扶養者情報はFormArrayで初期化（画像のフィールドに合わせる）
@@ -1098,6 +1106,9 @@ export class EmployeeManagementComponent implements OnInit {
     this.newEmployeeForm.reset();
     this.newEmployeeForm.get('company_id')?.setValue(this.companyId);
     this.newEmployeeForm.get('company_id')?.disable();
+    this.newEmployeeForm.get('role')?.disable();
+    this.newEmployeeForm.get('password')?.disable();  // パスワードフィールドを無効化
+    this.newEmployeeForm.get('is_dependent')?.setValue(false);
 
     this.showNewEmployeeModal = true;
   }
@@ -1105,6 +1116,8 @@ export class EmployeeManagementComponent implements OnInit {
   closeNewEmployeeModal() {
     this.showNewEmployeeModal = false;
     this.newEmployeeForm.get('company_id')?.enable();
+    this.newEmployeeForm.get('role')?.enable();
+    this.newEmployeeForm.get('password')?.enable();
   }
 
   // ランダムなパスワードを生成する関数
@@ -1759,17 +1772,15 @@ export class EmployeeManagementComponent implements OnInit {
     // 部署でフィルタリング
     if (searchData.department) {
       filtered = filtered.filter(emp => 
-        emp.department_id === searchData.department
+        (emp.department && emp.department.trim() ? emp.department : '-') === searchData.department
       );
     }
 
     // マイナンバー登録状況でフィルタリング
-    if (searchData.my_number_status) {
-      if (searchData.my_number_status === 'registered') {
-        filtered = filtered.filter(emp => emp.my_number);
-      } else if (searchData.my_number_status === 'not_registered') {
-        filtered = filtered.filter(emp => !emp.my_number);
-      }
+    if (searchData.my_number_status === 'registered') {
+      filtered = filtered.filter(emp => emp.hasMyNumber === true);
+    } else if (searchData.my_number_status === 'not_registered') {
+      filtered = filtered.filter(emp => emp.hasMyNumber !== true);
     }
 
     this.filteredMyNumberEmployees = filtered;
@@ -1904,13 +1915,20 @@ export class EmployeeManagementComponent implements OnInit {
     if (!officeId || !this.companyId) {
       this.officeEmployees = [];
       this.filteredMyNumberEmployees = [];
+      this.departmentSearchOptions = [];
       this.myNumberSearchForm.get('selected_employee_id')?.setValue('');
       return;
     }
 
     this.selectedOfficeId = officeId;
-    await this.loadOfficeEmployees(officeId);
+    this.officeEmployees = await this.loadOfficeEmployees(officeId);
     this.filteredMyNumberEmployees = [...this.officeEmployees]; // 初期表示時は全員表示
+    // departmentフィールドのユニーク値を抽出
+    const deptSet = new Set<string>();
+    for (const emp of this.officeEmployees) {
+      deptSet.add(emp.department && emp.department.trim() ? emp.department : '-');
+    }
+    this.departmentSearchOptions = Array.from(deptSet);
   }
 
   async loadOfficeEmployees(officeId: string) {
@@ -1924,8 +1942,8 @@ export class EmployeeManagementComponent implements OnInit {
       const querySnapshot = await getDocs(q);
       const now = new Date();
       const currentYearMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-      const employees = querySnapshot.docs.map(doc => {
-        const employee = { id: doc.id, ...doc.data() } as Employee;
+      let employees = await Promise.all(querySnapshot.docs.map(async docSnap => {
+        const employee = { id: docSnap.id, ...docSnap.data() } as Employee;
         // 今月入社の新入社員判定
         const empStartDate = employee.employment_start_date ? new Date(employee.employment_start_date) : null;
         if (empStartDate) {
@@ -1947,10 +1965,14 @@ export class EmployeeManagementComponent implements OnInit {
         });
         // 自動判定を実行
         this.updateInsuranceEligibility(employee);
+        // sensitive_idsコレクションでmyNumber存在チェック
+        const sensitiveRef = doc(this.firestore, 'sensitive_ids', employee.id);
+        const sensitiveDoc = await getDoc(sensitiveRef);
+        employee.hasMyNumber = !!(sensitiveDoc.exists() && sensitiveDoc.data()['myNumber']);
         return employee;
-      })
+      }));
       // 退職者を除外
-      .filter(emp => emp.status !== '退職');
+      employees = employees.filter((emp: Employee) => emp.status !== '退職');
       return employees;
     } catch (error) {
       console.error('従業員一覧の取得に失敗しました:', error);
@@ -2038,9 +2060,50 @@ export class EmployeeManagementComponent implements OnInit {
         this.selectedOfficeIsTokutei = null;
       }
       this.insuranceOfficeEmployees = await this.loadInsuranceOfficeEmployees(this.selectedInsuranceOfficeId);
-      // 各従業員の保険適用判定を自動保存
+      // 各従業員の保険適用判定を自動保存（手動修正を考慮）
       for (const emp of this.insuranceOfficeEmployees) {
-        await this.saveInitialInsuranceJudgement(emp);
+        this.updateInsuranceEligibility(emp);
+        try {
+          const docId = this.getSelectedJudgementDocId();
+          const ref = doc(this.firestore, 'employees', emp.id, 'insurance_judgements', docId);
+          const existingSnap = await getDoc(ref);
+          let isAutoGenerated = { health: true, nursing: true, pension: true };
+          let existingData: any = {};
+          if (existingSnap.exists()) {
+            existingData = existingSnap.data();
+            if (existingData['is_auto_generated'] && typeof existingData['is_auto_generated'] === 'object') {
+              isAutoGenerated = { ...isAutoGenerated, ...existingData['is_auto_generated'] };
+            }
+          }
+          // 手動修正されていないものだけ自動判定値で上書き
+          const updateData: any = { updated_at: new Date(), updated_by: 'system' };
+          if (isAutoGenerated.health !== false) {
+            updateData.health = (emp.healthInsuranceStatus as 'in' | 'out' | 'exempt') || 'out';
+          }
+          if (isAutoGenerated.nursing !== false) {
+            updateData.nursing = (emp.nursingInsuranceStatus as 'in' | 'out' | 'exempt') || 'out';
+          }
+          if (isAutoGenerated.pension !== false) {
+            updateData.pension = (emp.pensionInsuranceStatus as 'in' | 'out' | 'exempt') || 'out';
+          }
+          updateData.is_auto_generated = isAutoGenerated;
+          await setDoc(ref, updateData, { merge: true });
+          // 画面上のuserSelectedInsuranceStatusも更新
+          if (!emp.userSelectedInsuranceStatus) {
+            emp.userSelectedInsuranceStatus = {
+              health: (emp.healthInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+              nursing: (emp.nursingInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+              pension: (emp.pensionInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+              is_auto_generated: { ...isAutoGenerated }
+            };
+          } else {
+            if (isAutoGenerated.health !== false) emp.userSelectedInsuranceStatus.health = (emp.healthInsuranceStatus as 'in' | 'out' | 'exempt') || 'out';
+            if (isAutoGenerated.nursing !== false) emp.userSelectedInsuranceStatus.nursing = (emp.nursingInsuranceStatus as 'in' | 'out' | 'exempt') || 'out';
+            if (isAutoGenerated.pension !== false) emp.userSelectedInsuranceStatus.pension = (emp.pensionInsuranceStatus as 'in' | 'out' | 'exempt') || 'out';
+          }
+        } catch (error) {
+          console.error('事業所選択時の自動判定値の保存に失敗:', error);
+        }
       }
     } else {
       this.insuranceOfficeEmployees = [];
@@ -2096,6 +2159,14 @@ export class EmployeeManagementComponent implements OnInit {
 
   // 健康保険の適用判定
   checkHealthInsuranceEligibility(employee: any): InsuranceEligibility {
+    // 特記事項が「副業先」の場合は無条件で適用外
+    if (employee.remarks === '副業先') {
+      return {
+        isEligible: false,
+        reason: '副業先のため適用外',
+      };
+    }
+
     // employment_start_dateが未来なら適用外
     const targetDate = this.getJudgementTargetDate();
     const empStartDate = employee.employment_start_date ? new Date(employee.employment_start_date) : null;
@@ -2198,6 +2269,14 @@ export class EmployeeManagementComponent implements OnInit {
 
   // 介護保険の適用判定
   checkNursingInsuranceEligibility(employee: any): InsuranceEligibility {
+    // 特記事項が「副業先」の場合は無条件で適用外
+    if (employee.remarks === '副業先') {
+      return {
+        isEligible: false,
+        reason: '副業先のため適用外',
+      };
+    }
+
     // employment_start_dateが未来なら適用外
     const targetDate = this.getJudgementTargetDate();
     const empStartDate = employee.employment_start_date ? new Date(employee.employment_start_date) : null;
@@ -2253,6 +2332,14 @@ export class EmployeeManagementComponent implements OnInit {
 
   // 厚生年金の適用判定
   checkPensionInsuranceEligibility(employee: any): InsuranceEligibility {
+    // 特記事項が「副業先」の場合は無条件で適用外
+    if (employee.remarks === '副業先') {
+      return {
+        isEligible: false,
+        reason: '副業先のため適用外',
+      };
+    }
+
     // employment_start_dateが未来なら適用外
     const targetDate = this.getJudgementTargetDate();
     const empStartDate = employee.employment_start_date ? new Date(employee.employment_start_date) : null;
@@ -2612,5 +2699,88 @@ export class EmployeeManagementComponent implements OnInit {
   getJudgementTargetDate(): Date {
     return new Date(this.selectedYear, this.selectedMonth - 1, 1);
   }
+
+  // 保険適用判定タブの「判定」ボタン用
+  async recalculateInsuranceEligibility() {
+    if (!this.insuranceOfficeEmployees || this.insuranceOfficeEmployees.length === 0) return;
+    
+    // 最新の従業員情報を再取得
+    this.insuranceOfficeEmployees = await this.loadInsuranceOfficeEmployees(this.selectedInsuranceOfficeId);
+    
+    for (const emp of this.insuranceOfficeEmployees) {
+      this.updateInsuranceEligibility(emp);
+      // Firestoreの自動判定値も更新（手動修正済みは上書きしない）
+      try {
+        const docId = this.getSelectedJudgementDocId();
+        const ref = doc(this.firestore, 'employees', emp.id, 'insurance_judgements', docId);
+        const existingSnap = await getDoc(ref);
+        let isAutoGenerated = { health: true, nursing: true, pension: true };
+        let existingData: any = {};
+        if (existingSnap.exists()) {
+          existingData = existingSnap.data();
+          if (existingData['is_auto_generated'] && typeof existingData['is_auto_generated'] === 'object') {
+            isAutoGenerated = { ...isAutoGenerated, ...existingData['is_auto_generated'] };
+          }
+        }
+        // 手動修正されていないものだけ自動判定値で上書き
+        const updateData: any = { updated_at: new Date(), updated_by: 'system' };
+        if (isAutoGenerated.health !== false) {
+          updateData.health = (emp.healthInsuranceStatus as 'in' | 'out' | 'exempt') || 'out';
+        }
+        if (isAutoGenerated.nursing !== false) {
+          updateData.nursing = (emp.nursingInsuranceStatus as 'in' | 'out' | 'exempt') || 'out';
+        }
+        if (isAutoGenerated.pension !== false) {
+          updateData.pension = (emp.pensionInsuranceStatus as 'in' | 'out' | 'exempt') || 'out';
+        }
+        updateData.is_auto_generated = isAutoGenerated;
+        await setDoc(ref, updateData, { merge: true });
+        // 画面上のuserSelectedInsuranceStatusも更新
+        if (!emp.userSelectedInsuranceStatus) {
+          emp.userSelectedInsuranceStatus = {
+            health: (emp.healthInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+            nursing: (emp.nursingInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+            pension: (emp.pensionInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+            is_auto_generated: { ...isAutoGenerated }
+          };
+        } else {
+          if (isAutoGenerated.health !== false) emp.userSelectedInsuranceStatus.health = (emp.healthInsuranceStatus as 'in' | 'out' | 'exempt') || 'out';
+          if (isAutoGenerated.nursing !== false) emp.userSelectedInsuranceStatus.nursing = (emp.nursingInsuranceStatus as 'in' | 'out' | 'exempt') || 'out';
+          if (isAutoGenerated.pension !== false) emp.userSelectedInsuranceStatus.pension = (emp.pensionInsuranceStatus as 'in' | 'out' | 'exempt') || 'out';
+        }
+      } catch (error) {
+        console.error('判定ボタンによる自動判定値の保存に失敗:', error);
+      }
+    }
+  }
+
+  // 指定した従業員のみ自動判定にリセット
+  async resetInsuranceJudgementToAutoForEmployee(emp: any) {
+    this.updateInsuranceEligibility(emp);
+    try {
+      const docId = this.getSelectedJudgementDocId();
+      const ref = doc(this.firestore, 'employees', emp.id, 'insurance_judgements', docId);
+      await setDoc(ref, {
+        health: (emp.healthInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+        nursing: (emp.nursingInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+        pension: (emp.pensionInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+        updated_at: new Date(),
+        updated_by: 'system',
+        is_auto_generated: { health: true, nursing: true, pension: true }
+      });
+      // 画面上の表示も更新
+      emp.userSelectedInsuranceStatus = {
+        health: (emp.healthInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+        nursing: (emp.nursingInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+        pension: (emp.pensionInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+        is_auto_generated: { health: true, nursing: true, pension: true }
+      };
+    } catch (error) {
+      console.error('個別自動判定リセットに失敗:', error);
+    }
+  }
+
+  departmentSearchOptions: string[] = [];
+  departmentSearchOptionsForEmployee: string[] = [];
 }
 

@@ -635,6 +635,15 @@ export class PayrollManagementComponent implements OnInit {
     return months;
   }
 
+  // 現在の年月を取得するヘルパーメソッド
+  private getCurrentYearMonth(): { year: number; month: number } {
+    const now = new Date();
+    return {
+      year: now.getFullYear(),
+      month: now.getMonth() + 1
+    };
+  }
+
   // 報酬月額変更自動判定ロジック
   async judgeSalaryChange() {
     this.autoJudgeAlert = '';
@@ -732,11 +741,13 @@ export class PayrollManagementComponent implements OnInit {
       this.isSummaryLoading = false;
       return;
     }
+
     // 全従業員取得（会社IDで絞り込み）
     const employeesCol = collection(this.firestore, 'employees');
     const q = query(employeesCol, where('company_id', '==', this.currentCompanyId));
     const empSnapshot = await getDocs(q);
     const employees = empSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
     // 全国共通等級表（2025年）を取得
     const grades: { [key: string]: any } = {};
     const gradesCol = collection(this.firestore, 'prefectures', '全国', 'insurance_premiums', '2025', 'grades');
@@ -744,6 +755,7 @@ export class PayrollManagementComponent implements OnInit {
     gradesSnapshot.forEach(doc => {
       grades[doc.id] = doc.data();
     });
+
     function getGradeIdBySalary(grades: { [key: string]: any }, salary: number): string | null {
       for (const [gradeId, grade] of Object.entries(grades)) {
         if (salary >= grade.salaryMin && salary < grade.salaryMax) {
@@ -752,46 +764,39 @@ export class PayrollManagementComponent implements OnInit {
       }
       return null;
     }
+
+    // 現在の年月を取得
+    const { year: currentYear, month: currentMonth } = this.getCurrentYearMonth();
+    const targetMonths = this.getLast3Months(currentYear, currentMonth);
+
     // 各従業員ごとにsalaries取得
     for (const empRaw of employees) {
       const emp = empRaw as any;
       const salariesCol = collection(this.firestore, 'employees', emp.id, 'salaries');
-      const q = query(salariesCol, orderBy('year_month', 'desc'));
+      const q = query(salariesCol, where('year_month', 'in', targetMonths));
       const salSnapshot = await getDocs(q);
       const salaries = salSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
         created_at: doc.data()['created_at']?.toDate(),
         updated_at: doc.data()['updated_at']?.toDate()
-      } as RegisteredSalary)).slice(0, 12).reverse();
-      
-      if (salaries.length < 6) continue;
-      
-      const latestSalary = salaries[salaries.length - 1];
-      const latestYearMonth = latestSalary.year_month;
-      const [latestYear, latestMonth] = latestYearMonth.split('-').map(Number);
-      
-      const last3Months = this.getLast3Months(latestYear, latestMonth);
-      const prev3Months = this.getLast3Months(latestYear, latestMonth - 3);
-      
-      const last3 = last3Months.map((ym: string) => 
-        salaries.find(s => s.year_month === ym)
-      ).filter((s): s is RegisteredSalary => s !== undefined);
-      
-      const prev3 = prev3Months.map((ym: string) => 
-        salaries.find(s => s.year_month === ym)
-      ).filter((s): s is RegisteredSalary => s !== undefined);
-      
-      if (last3.length < 3 || prev3.length < 3) continue;
-      
-      const avg = (arr: RegisteredSalary[]) => arr.reduce((sum, s) => {
-        const nonBonusTotal = (s.details || []).filter(d => d.type !== 'bonus').reduce((a, d) => a + (d.amount || 0), 0);
-        return sum + nonBonusTotal;
-      }, 0) / arr.length;
-      
-      const avgLast3 = avg(last3);
-      const avgPrev3 = avg(prev3);
-      const diffRate = avgPrev3 ? (avgLast3 - avgPrev3) / avgPrev3 : 0;
+      } as RegisteredSalary));
+
+      // 各月の給与データを取得（賞与を除く）
+      const monthlySalaries = targetMonths.map(month => {
+        const salary = salaries.find(s => s.year_month === month);
+        if (!salary) return 0;
+        
+        // 賞与を除いた合計を計算
+        const nonBonusTotal = (salary.details || [])
+          .filter(d => d.type !== 'bonus')
+          .reduce((sum, d) => sum + (d.amount || 0), 0);
+        
+        return nonBonusTotal;
+      });
+
+      // 平均を計算（データがない月は0として計算）
+      const avgLast3 = monthlySalaries.reduce((sum, amount) => sum + amount, 0) / 3;
 
       // 現在の等級（employeesコレクションのauto_grade）
       const currentGrade = emp.auto_grade || '';
@@ -801,7 +806,9 @@ export class PayrollManagementComponent implements OnInit {
 
       // 判定結果の生成
       let result = '';
-      if (currentGrade && calculatedGrade) {
+      if (avgLast3 === 0) {
+        result = '直近の給与なし';
+      } else if (currentGrade && calculatedGrade) {
         // 先頭の数字を取得して比較
         const getGradeNumber = (grade: string): number => {
           const match = grade.match(/^\d+/);
@@ -813,6 +820,8 @@ export class PayrollManagementComponent implements OnInit {
         } else {
           result = '変動なし';
         }
+      } else if (!calculatedGrade) {
+        result = '等級判定不可';
       }
 
       this.salarySummaries.push({

@@ -629,3 +629,31 @@ button:hover {
   margin-bottom: 0.5em;
   margin-left: 0.2em;
 }
+
+.text-warning {
+  color: #856404;
+  background-color: #fff3cd;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.text-danger {
+  color: #721c24;
+  background-color: #f8d7da;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.text-success {
+  color: #155724;
+  background-color: #d4edda;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.text-info {
+  color: #0c5460;
+  background-color: #d1ecf1;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}

@@ -84,9 +84,7 @@
                 <label>所属部署</label>
                 <select formControlName="department">
                   <option value="">すべて</option>
-                  <option *ngFor="let dep of departments" [value]="dep.department_id">
-                    {{ dep.department_name }}
-                  </option>
+                  <option *ngFor="let dept of departmentSearchOptionsForEmployee" [value]="dept">{{ dept }}</option>
                 </select>
               </div>
               <div class="search-item">
@@ -95,9 +93,12 @@
                   <option value="">すべて</option>
                   <option value="正社員">正社員</option>
                   <option value="契約社員">契約社員</option>
+                  <option value="パートタイム">パートタイム</option>
                   <option value="派遣社員">派遣社員</option>
-                  <option value="パート">パート</option>
+                  <option value="インターン・研修生">インターン・研修生</option>
                   <option value="アルバイト">アルバイト</option>
+                  <option value="再雇用">再雇用</option>
+                  <option value="役員">役員</option>
                   <option value="業務委託">業務委託</option>
                   <option value="その他">その他</option>
                 </select>
@@ -107,6 +108,8 @@
                 <select formControlName="status">
                   <option value="">すべて</option>
                   <option value="在籍中">在籍中</option>
+                  <option value="海外赴任">海外赴任</option>
+                  <option value="出向中">出向中</option>
                   <option value="休職中">休職中</option>
                   <option value="産休中">産休中</option>
                   <option value="育休中">育休中</option>
@@ -191,7 +194,7 @@
           <tr>
             <th style="min-width: 100px;">社員ID</th>
             <th style="min-width: 150px;">氏名</th>
-            <th style="min-width: 150px;">所属部署/拠点</th>
+            <th style="min-width: 150px;">所属部署</th>
             <th style="min-width: 120px;">勤務開始日</th>
             <th style="min-width: 50px;">健康保険加入状況</th>
             <th style="min-width: 50px;">厚生年金加入状況</th>
@@ -206,7 +209,7 @@
           <tr *ngFor="let emp of filteredEmployees">
             <td>{{ emp.employee_code }}</td>
             <td>{{ emp.last_name_kanji }} {{ emp.first_name_kanji }}</td>
-            <td>{{ emp.department || '-' }}</td>
+            <td>{{ emp.department ? emp.department : '-' }}</td>
             <td>{{ emp.employment_start_date || '-' }}</td>
             <td>{{ emp.health_insurance_enrolled ? '加入' : '未加入' }}</td>
             <td>{{ emp.pension_insurance_enrolled ? '加入' : '未加入' }}</td>
@@ -246,6 +249,7 @@
               <ng-container [ngSwitch]="field">
                 <ng-container *ngSwitchCase="'role'">
                   <select [formControlName]="field">
+                    <option value="" disabled selected>ここでは権限は設定できません</option>
                     <option value="admin">管理者</option>
                     <option value="hr">人事担当</option>
                     <option value="manager">承認者</option>
@@ -259,6 +263,9 @@
                 </ng-container>
                 <ng-container *ngSwitchCase="'company_id'">
                   <input [formControlName]="field" [attr.disabled]="true" />
+                </ng-container>
+                <ng-container *ngSwitchCase="'password'">
+                  <input [formControlName]="field" placeholder="初期パスワードは自動生成" />
                 </ng-container>
                 <ng-container *ngSwitchCase="'has_dependents'">
                   <input [value]="newEmployeeForm.get(field)?.value ? '有' : '無'" disabled />
@@ -374,7 +381,7 @@
                 </ng-container>
                 <ng-container *ngSwitchCase="'is_dependent'">
                   <div style="display:flex;align-items:center;gap:1.5em;">
-                    <label style="margin-bottom:0;">自分が扶養されているか</label>
+                    
                     <label><input type="radio" [formControlName]="field" [value]="true" /> はい</label>
                     <label><input type="radio" [formControlName]="field" [value]="false" /> いいえ</label>
                   </div>
@@ -462,7 +469,7 @@
                 <label>{{ employeeFieldLabels[field] || field }}</label>
                 <ng-container [ngSwitch]="field">
                   <ng-container *ngSwitchCase="'role'">
-                    <select [formControlName]="field">
+                    <select [formControlName]="field" [disabled]="true">
                       <option value="admin">管理者</option>
                       <option value="hr">人事担当</option>
                       <option value="manager">承認者</option>
@@ -478,7 +485,7 @@
                     <input [formControlName]="field" [attr.disabled]="true" />
                   </ng-container>
                   <ng-container *ngSwitchCase="'password'">
-                    <input [formControlName]="field" [attr.disabled]="true" />
+                    <input [formControlName]="field" placeholder="初期パスワードは自動生成" />
                   </ng-container>
                   <ng-container *ngSwitchCase="'has_dependents'">
                     <input [value]="detailForm.get(field)?.value ? '有' : '無'" disabled />
@@ -594,7 +601,7 @@
                   </ng-container>
                   <ng-container *ngSwitchCase="'is_dependent'">
                     <div style="display:flex;align-items:center;gap:1.5em;">
-                      <label style="margin-bottom:0;">自分が扶養されているか</label>
+                      
                       <label><input type="radio" [formControlName]="field" [value]="true" /> はい</label>
                       <label><input type="radio" [formControlName]="field" [value]="false" /> いいえ</label>
                     </div>
@@ -817,9 +824,7 @@
             <label>所属部署</label>
             <select formControlName="department">
               <option value="">すべて</option>
-              <option *ngFor="let dep of departments" [value]="dep.department_id">
-                {{ dep.department_name }}
-              </option>
+              <option *ngFor="let dept of departmentSearchOptionsForEmployee" [value]="dept">{{ dept }}</option>
             </select>
           </div>
           <div class="search-item">
@@ -856,7 +861,7 @@
           <tr *ngFor="let emp of filteredMyNumberEmployees">
             <td>{{ emp.employee_code }}</td>
             <td>{{ emp.last_name_kanji }} {{ emp.first_name_kanji }}</td>
-            <td>{{ emp.department || '-' }}</td>
+            <td>{{ emp.department ? emp.department : '-' }}</td>
             <td>{{ emp.hasMyNumber ? '登録' : '未登録' }}</td>
             <td>{{ emp.my_number_registered_at ? (emp.my_number_registered_at.toDate() | date:'yyyy/MM/dd') : '-' }}</td>
             <td>{{ emp.my_number_updated_at ? (emp.my_number_updated_at.toDate() | date:'yyyy/MM/dd') : '-' }}</td>
@@ -939,6 +944,7 @@
       </div>
       <div *ngIf="insuranceOfficeEmployees.length > 0">
         <div style="margin-bottom: 1em;">
+          <button type="button" (click)="recalculateInsuranceEligibility()" style="background:#388e3c; color:#fff; font-weight:bold; padding:0.5em 1.5em; border-radius:6px; margin-right:0.7em;">判定</button>
           <button type="button" (click)="resetAllInsuranceJudgementsToAuto()" style="background:#1976d2; color:#fff; font-weight:bold; padding:0.5em 1.5em; border-radius:6px;">すべて自動判定に戻す</button>
         </div>
         <table class="my-number-table">
@@ -950,6 +956,7 @@
               <th>介護保険</th>
               <th>厚生年金</th>
               <th>注意事項</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -1012,6 +1019,9 @@
                 <ng-template #noActions>
                   <div style="color:#4caf50; font-size:0.95em;">特になし</div>
                 </ng-template>
+              </td>
+              <td>
+                <button type="button" (click)="resetInsuranceJudgementToAutoForEmployee(emp)" style="background:#1976d2; color:#fff; font-size:0.95em; padding:0.4em 1.2em; border-radius:6px;">自動判定</button>
               </td>
             </tr>
           </tbody>
