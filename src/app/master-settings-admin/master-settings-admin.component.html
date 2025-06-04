@@ -29,6 +29,27 @@
                 </td>
               </ng-container>
             </tr>
+            <!-- 特定適用事業所かどうか -->
+            <tr>
+              <th>{{ fieldLabels['is_tokutei'] }}</th>
+              <td>
+                <ng-container *ngIf="!isEditingCompany">
+                  {{ companyInfo.is_tokutei ? '特定適用事業所である' : '特定適用事業所でない' }}
+                </ng-container>
+                <ng-container *ngIf="isEditingCompany">
+                  <div style="display: flex; align-items: center; gap: 2em;">
+                    <label style="display: flex; align-items: center; font-weight: normal; margin: 0;">
+                      <input type="radio" [(ngModel)]="companyForm.is_tokutei" [value]="false" name="is_tokutei_radio">
+                      <span style="margin-left: 0.5em;">特定適用事業所でない</span>
+                    </label>
+                    <label style="display: flex; align-items: center; font-weight: normal; margin: 0;">
+                      <input type="radio" [(ngModel)]="companyForm.is_tokutei" [value]="true" name="is_tokutei_radio">
+                      <span style="margin-left: 0.5em;">特定適用事業所である</span>
+                    </label>
+                  </div>
+                </ng-container>
+              </td>
+            </tr>
           </tbody>
         </table>
         <div class="edit-buttons" *ngIf="isEditingCompany">
@@ -45,7 +66,7 @@
           </div>
           <table class="info-table">
             <tbody>
-              <ng-container *ngFor="let key of ['department_id', 'department_name', 'email', 'manager_name', 'office_number', 'phone_number', 'postal_code', 'address', 'location']">
+              <ng-container *ngFor="let key of ['department_id', 'department_name', 'email', 'manager_name', 'office_number', 'insurer_number', 'phone_number', 'postal_code', 'address', 'location']">
                 <tr *ngIf="dept[key] !== undefined">
                   <th>{{ fieldLabels[key] || key }}</th>
                   <td>

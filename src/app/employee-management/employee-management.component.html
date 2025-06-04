@@ -28,7 +28,7 @@
   <div class="tab-header">
     <button [class.active]="activeTab === 'employee'" (click)="activeTab = 'employee'">従業員管理</button>
     <button [class.active]="activeTab === 'mynumber'" (click)="activeTab = 'mynumber'">マイナンバー管理</button>
-    <button [class.active]="activeTab === 'insurance'" (click)="activeTab = 'insurance'">保険適用判定</button>
+    <button [class.active]="activeTab === 'insurance'" (click)="activeTab = 'insurance'">保険適用（免除）判定</button>
   </div>
 
   <!-- 従業員管理タブ -->
@@ -379,6 +379,11 @@
                     <label><input type="radio" [formControlName]="field" [value]="false" /> いいえ</label>
                   </div>
                 </ng-container>
+                <ng-container *ngSwitchCase="'remarks'">
+                  <select [formControlName]="field">
+                    <option *ngFor="let option of remarksOptions" [value]="option">{{ option }}</option>
+                  </select>
+                </ng-container>
                 <ng-container *ngSwitchDefault>
                   <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" />
                   <div class="error-message" *ngIf="(field === 'last_name_kana' || field === 'first_name_kana') && newEmployeeForm.get(field)?.errors?.['katakana'] && newEmployeeForm.get(field)?.touched">
@@ -552,14 +557,14 @@
                     <ng-container *ngIf="['アルバイト','パートタイム','契約社員','インターン・研修生'].includes(detailForm.get('employment_type')?.value)">
                       <div class="detail-row">
                         <label>所定労働時間（/月）</label>
-                        <input formControlName="scheduled_working_hours" placeholder="例：80時間/月" />
+                        <input formControlName="scheduled_working_hours" placeholder="例：80" />
                       </div>
                       <div class="detail-row">
                         <label>雇用契約期間</label>
                         <input formControlName="employment_contract_period" placeholder="例：2024/04/01～2025/03/31" />
                       </div>
                       <div class="detail-row">
-                        <label>月収見込み</label>
+                        <label>月収見込み（円）</label>
                         <input formControlName="expected_monthly_income" type="number" placeholder="例：100000" />
                       </div>
                       <div class="detail-row">
@@ -593,6 +598,11 @@
                       <label><input type="radio" [formControlName]="field" [value]="true" /> はい</label>
                       <label><input type="radio" [formControlName]="field" [value]="false" /> いいえ</label>
                     </div>
+                  </ng-container>
+                  <ng-container *ngSwitchCase="'remarks'">
+                    <select [formControlName]="field">
+                      <option *ngFor="let option of remarksOptions" [value]="option">{{ option }}</option>
+                    </select>
                   </ng-container>
                   <ng-container *ngSwitchDefault>
                     <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" />
@@ -904,7 +914,18 @@
 
   <!-- 保険適用判定タブ -->
   <div class="tab-content" *ngIf="activeTab === 'insurance'">
-    <h1>保険適用判定</h1>
+    <h1>保険適用（免除）判定</h1>
+    <div class="judgement-date-select" style="margin-bottom:1em; display: flex; align-items: center; gap: 1em;">
+      <label style="font-weight: bold; font-size: 1.08em;">判定対象年月：</label>
+      <select [(ngModel)]="selectedYear" (change)="onJudgementDateChange()" style="min-width: 100px; padding: 0.5em 1.2em; font-size: 1.08em; border-radius: 6px; border: 1.5px solid #b0bec5;">
+        <option *ngFor="let y of yearOptions" [value]="y">{{ y }}</option>
+      </select>
+      <span style="font-size:1.1em;">年</span>
+      <select [(ngModel)]="selectedMonth" (change)="onJudgementDateChange()" style="min-width: 80px; padding: 0.5em 1.2em; font-size: 1.08em; border-radius: 6px; border: 1.5px solid #b0bec5;">
+        <option *ngFor="let m of monthOptions" [value]="m">{{ m }}</option>
+      </select>
+      <span style="font-size:1.1em;">月</span>
+    </div>
     <div class="insurance-judgement-section">
       <div class="judgement-office-select" style="margin-bottom:1.5em;">
         <label for="insuranceOfficeSelect">事業所を選択：</label>
@@ -913,7 +934,13 @@
           <option *ngFor="let office of offices" [value]="office.id">{{ office.name }}</option>
         </select>
       </div>
+      <div *ngIf="selectedOfficeIsTokutei !== null" style="margin-bottom: 1em; color: #1976d2; font-weight: bold;">
+        {{ selectedOfficeIsTokutei ? '特定適用事業所' : '特定適用事業所ではない' }}
+      </div>
       <div *ngIf="insuranceOfficeEmployees.length > 0">
+        <div style="margin-bottom: 1em;">
+          <button type="button" (click)="resetAllInsuranceJudgementsToAuto()" style="background:#1976d2; color:#fff; font-weight:bold; padding:0.5em 1.5em; border-radius:6px;">すべて自動判定に戻す</button>
+        </div>
         <table class="my-number-table">
           <thead>
             <tr>
@@ -930,22 +957,43 @@
               <td>{{ emp.employee_code }}</td>
               <td>{{ emp.last_name_kanji }} {{ emp.first_name_kanji }}</td>
               <td>
-                <label><input type="radio" name="healthInsuranceStatus_{{emp.id}}" value="in" [checked]="emp.healthInsuranceStatus === 'in'"> 適用内</label>
-                <label style="margin-left:1em;"><input type="radio" name="healthInsuranceStatus_{{emp.id}}" value="out" [checked]="emp.healthInsuranceStatus === 'out'"> 適用外</label>
-                <div *ngIf="emp.healthInsuranceStatus === 'out'" style="color:#d32f2f; font-size:0.95em; margin-top:0.2em;">{{ emp.healthInsuranceReason }}</div>
+                <label>
+                  <input type="radio" name="healthInsuranceStatus_{{emp.id}}" value="in" [checked]="getDisplayedStatus(emp, 'health') === 'in'" (change)="onInsuranceStatusChange(emp, 'health', 'in')" [style.accentColor]="(emp.userSelectedInsuranceStatus?.is_auto_generated?.health === false) ? '#d32f2f' : '#1976d2'"> 適用内
+                </label>
+                <label style="margin-left:1em;">
+                  <input type="radio" name="healthInsuranceStatus_{{emp.id}}" value="out" [checked]="getDisplayedStatus(emp, 'health') === 'out'" (change)="onInsuranceStatusChange(emp, 'health', 'out')" [style.accentColor]="(emp.userSelectedInsuranceStatus?.is_auto_generated?.health === false) ? '#d32f2f' : '#1976d2'"> 適用外
+                </label>
+                <label style="margin-left:1em;">
+                  <input type="radio" name="healthInsuranceStatus_{{emp.id}}" value="exempt" [checked]="getDisplayedStatus(emp, 'health') === 'exempt'" (change)="onInsuranceStatusChange(emp, 'health', 'exempt')" [style.accentColor]="(emp.userSelectedInsuranceStatus?.is_auto_generated?.health === false) ? '#d32f2f' : '#1976d2'"> 免除
+                </label>
+                <div *ngIf="getDisplayedStatus(emp, 'health') === 'out' || getDisplayedStatus(emp, 'health') === 'exempt'" style="color:#d32f2f; font-size:0.95em; margin-top:0.2em;">{{ emp.healthInsuranceReason }}</div>
               </td>
               <td>
-                <label><input type="radio" name="nursingInsuranceStatus_{{emp.id}}" value="in" [checked]="emp.nursingInsuranceStatus === 'in'"> 適用内</label>
-                <label style="margin-left:1em;"><input type="radio" name="nursingInsuranceStatus_{{emp.id}}" value="out" [checked]="emp.nursingInsuranceStatus === 'out'"> 適用外</label>
-                <div *ngIf="emp.nursingInsuranceStatus === 'out'" style="color:#d32f2f; font-size:0.95em; margin-top:0.2em;">{{ emp.nursingInsuranceReason }}</div>
+                <label>
+                  <input type="radio" name="nursingInsuranceStatus_{{emp.id}}" value="in" [checked]="getDisplayedStatus(emp, 'nursing') === 'in'" (change)="onInsuranceStatusChange(emp, 'nursing', 'in')" [style.accentColor]="(emp.userSelectedInsuranceStatus?.is_auto_generated?.nursing === false) ? '#d32f2f' : '#1976d2'"> 適用内
+                </label>
+                <label style="margin-left:1em;">
+                  <input type="radio" name="nursingInsuranceStatus_{{emp.id}}" value="out" [checked]="getDisplayedStatus(emp, 'nursing') === 'out'" (change)="onInsuranceStatusChange(emp, 'nursing', 'out')" [style.accentColor]="(emp.userSelectedInsuranceStatus?.is_auto_generated?.nursing === false) ? '#d32f2f' : '#1976d2'"> 適用外
+                </label>
+                <label style="margin-left:1em;">
+                  <input type="radio" name="nursingInsuranceStatus_{{emp.id}}" value="exempt" [checked]="getDisplayedStatus(emp, 'nursing') === 'exempt'" (change)="onInsuranceStatusChange(emp, 'nursing', 'exempt')" [style.accentColor]="(emp.userSelectedInsuranceStatus?.is_auto_generated?.nursing === false) ? '#d32f2f' : '#1976d2'"> 免除
+                </label>
+                <div *ngIf="getDisplayedStatus(emp, 'nursing') === 'out' || getDisplayedStatus(emp, 'nursing') === 'exempt'" style="color:#d32f2f; font-size:0.95em; margin-top:0.2em;">{{ emp.nursingInsuranceReason }}</div>
               </td>
               <td>
-                <label><input type="radio" name="pensionInsuranceStatus_{{emp.id}}" value="in" [checked]="emp.pensionInsuranceStatus === 'in'"> 適用内</label>
-                <label style="margin-left:1em;"><input type="radio" name="pensionInsuranceStatus_{{emp.id}}" value="out" [checked]="emp.pensionInsuranceStatus === 'out'"> 適用外</label>
-                <div *ngIf="emp.pensionInsuranceStatus === 'out'" style="color:#d32f2f; font-size:0.95em; margin-top:0.2em;">{{ emp.pensionInsuranceReason }}</div>
+                <label>
+                  <input type="radio" name="pensionInsuranceStatus_{{emp.id}}" value="in" [checked]="getDisplayedStatus(emp, 'pension') === 'in'" (change)="onInsuranceStatusChange(emp, 'pension', 'in')" [style.accentColor]="(emp.userSelectedInsuranceStatus?.is_auto_generated?.pension === false) ? '#d32f2f' : '#1976d2'"> 適用内
+                </label>
+                <label style="margin-left:1em;">
+                  <input type="radio" name="pensionInsuranceStatus_{{emp.id}}" value="out" [checked]="getDisplayedStatus(emp, 'pension') === 'out'" (change)="onInsuranceStatusChange(emp, 'pension', 'out')" [style.accentColor]="(emp.userSelectedInsuranceStatus?.is_auto_generated?.pension === false) ? '#d32f2f' : '#1976d2'"> 適用外
+                </label>
+                <label style="margin-left:1em;">
+                  <input type="radio" name="pensionInsuranceStatus_{{emp.id}}" value="exempt" [checked]="getDisplayedStatus(emp, 'pension') === 'exempt'" (change)="onInsuranceStatusChange(emp, 'pension', 'exempt')" [style.accentColor]="(emp.userSelectedInsuranceStatus?.is_auto_generated?.pension === false) ? '#d32f2f' : '#1976d2'"> 免除
+                </label>
+                <div *ngIf="getDisplayedStatus(emp, 'pension') === 'out' || getDisplayedStatus(emp, 'pension') === 'exempt'" style="color:#d32f2f; font-size:0.95em; margin-top:0.2em;">{{ emp.pensionInsuranceReason }}</div>
               </td>
               <td>
-                <ng-container *ngIf="emp.healthInsuranceRequiredActions?.length || emp.nursingInsuranceRequiredActions?.length || emp.pensionInsuranceRequiredActions?.length; else noActions">
+                <ng-container *ngIf="getRequiredActionsSummary(emp); else noActions">
                   <div style="color:#1976d2; font-size:0.95em; max-width: 320px; display: flex; align-items: center;">
                     <span *ngIf="getRequiredActionsSummary(emp).length > 30; else shortText" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; max-width: 220px;">
                       {{ getRequiredActionsSummary(emp) | slice:0:30 }}…
@@ -971,8 +1019,8 @@
       </div>
       <div *ngIf="insuranceOfficeEmployees.length === 0" style="color:#888; margin-top:2em;">該当する従業員がいません</div>
       <div class="judgement-info" style="margin-top:2em;">
-        <h3>判定理由</h3>
-        <p>この従業員は「雇用形態：パート」「月収見込み：8万円未満」などの条件により、健康保険は<strong>適用外</strong>となっています。</p>
+        <h3>判定について</h3>
+        <p>上記の判定については従業員情報から判定を行っています。実際に保険に加入しているかどうかで判断しておりませんので、上記の情報を元にご自身でご判断ください。</p>
       </div>
     </div>
   </div>

@@ -120,7 +120,9 @@ export class InsurancePremiumCalculationComponent implements OnInit {
     employmentInsurance: 0,
     total: 0,
     ippanFull: 0,
-    ippanHalf: 0
+    ippanHalf: 0,
+    tokuteiHalf: 0,
+    kaigoHalf: 0
   };
 
   // 賞与計算結果
@@ -131,7 +133,13 @@ export class InsurancePremiumCalculationComponent implements OnInit {
     employmentInsurance: 0,
     total: 0,
     ippanFull: 0,
-    ippanHalf: 0
+    ippanHalf: 0,
+    tokuteiFull: 0,
+    tokuteiHalf: 0,
+    kaigoFull: 0,
+    kaigoHalf: 0,
+    kouseiFull: 0,
+    kouseiHalf: 0
   };
 
   // 賞与額入力用
@@ -177,8 +185,8 @@ export class InsurancePremiumCalculationComponent implements OnInit {
   totalCompanyBurden: number = 0;
   totalBurden: number = 0;
 
-  // 四捨五入パターン: 'round'（標準） or 'custom'（0.5未満切り捨て、0.5以上切り上げ）
-  roundingPattern: 'round' | 'custom' = 'round';
+  // 四捨五入パターン: 'custom'（0.5以下切り捨て・0.5超切り上げ） or 'round'（0.5未満切り捨て・0.5以上切り上げ）
+  roundingPattern: 'custom' | 'round' = 'custom';
 
   // マスタ管理用
   prefectures: Prefecture[] = [];
@@ -198,6 +206,11 @@ export class InsurancePremiumCalculationComponent implements OnInit {
   selectedHistoryPrefectureId: string = '';
   historyPrefectureRates: any = null;
   historyPrefectureRatesError: string | null = null;
+
+  // is_applicableの一時保存用
+  public _lastInsuranceApplicable: { ippan: boolean; tokutei: boolean; kousei: boolean } = { ippan: false, tokutei: false, kousei: false };
+
+  isBonusLoading = false;
 
   constructor(
     private insurancePremiumService: InsurancePremiumService,
@@ -416,8 +429,59 @@ export class InsurancePremiumCalculationComponent implements OnInit {
     console.log('アプリ側のselectedPrefectureId: [' + this.selectedPrefectureId + ']');
   }
 
+  // 年度と月から実際の年を計算し、ドキュメントIDを返す
+  getDocIdFromYearAndMonth(selectedYear: string, selectedMonth: string): string {
+    const monthNum = parseInt(selectedMonth, 10);
+    let actualYear = parseInt(selectedYear, 10);
+    if (monthNum >= 1 && monthNum <= 3) {
+      actualYear += 1;
+    }
+    return `${actualYear}-${selectedMonth}`;
+  }
+
+  // 判定ロジックを共通化
+  private async getInsuranceApplicableFromJudgement(selectedYear: string, selectedMonth: string): Promise<{ ippan: boolean; tokutei: boolean; kousei: boolean }> {
+    let healthApplicable = false;
+    let nursingApplicable = false;
+    let pensionApplicable = false;
+    if (this.selectedEmployeeId) {
+      const docId = this.getDocIdFromYearAndMonth(selectedYear, selectedMonth);
+      const judgementRef = doc(this.firestore, 'employees', this.selectedEmployeeId, 'insurance_judgements', docId);
+      const judgementSnap = await getDoc(judgementRef);
+      if (judgementSnap.exists()) {
+        const data = judgementSnap.data();
+        healthApplicable = data['health'] === 'in';
+        nursingApplicable = data['nursing'] === 'in';
+        pensionApplicable = data['pension'] === 'in';
+      }
+      // nursingApplicableがtrueならhealthApplicableはfalse
+      if (nursingApplicable) healthApplicable = false;
+    }
+    return {
+      ippan: healthApplicable,
+      tokutei: nursingApplicable,
+      kousei: pensionApplicable
+    };
+  }
+
   // 保険料計算
   async calculateInsurance() {
+    this.isBonusCalculation = false;
+    this.bonusCalculationResult = {
+      healthInsurance: 0,
+      nursingInsurance: 0,
+      pensionInsurance: 0,
+      employmentInsurance: 0,
+      total: 0,
+      ippanFull: 0,
+      ippanHalf: 0,
+      tokuteiFull: 0,
+      tokuteiHalf: 0,
+      kaigoFull: 0,
+      kaigoHalf: 0,
+      kouseiFull: 0,
+      kouseiHalf: 0
+    };
     await this.printPrefectureIds();
     try {
       // 都道府県と年度の確認
@@ -434,16 +498,43 @@ export class InsurancePremiumCalculationComponent implements OnInit {
         return;
       }
 
+      // --- ここから判定取得 ---
+      this._lastInsuranceApplicable = await this.getInsuranceApplicableFromJudgement(this.selectedYear, this.selectedMonth);
+      // --- ここまで ---
+
+      // --- 介護保険の計算ロジック追加 ---
+      let kaigoIsApplicable = false;
+      let kaigoFull = 0;
+      let kaigoHalf = 0;
+      if (this.selectedGradeInfo?.tokutei && this.selectedGradeInfo?.ippan) {
+        kaigoIsApplicable = true;
+        // Decimal.jsを使用して計算（四捨五入前の値で計算）
+        const tokuteiFull = new Decimal(this.selectedGradeInfo.tokutei.full || 0);
+        const ippanFull = new Decimal(this.selectedGradeInfo.ippan.full || 0);
+        kaigoFull = tokuteiFull.minus(ippanFull).toNumber();
+        
+        const tokuteiHalf = new Decimal(this.selectedGradeInfo.tokutei.half || 0);
+        const ippanHalf = new Decimal(this.selectedGradeInfo.ippan.half || 0);
+        // 計算後に四捨五入を適用
+        kaigoHalf = this.applyRounding(tokuteiHalf.minus(ippanHalf).toNumber());
+      }
+      // --- ここまで ---
+
       // 計算結果を設定
       this.calculationResult = {
         healthInsurance: this.selectedGradeInfo.ippan?.full || 0,
         nursingInsurance: 0,
         pensionInsurance: this.selectedGradeInfo.kousei?.full || 0,
         employmentInsurance: 0,
-        total: (this.selectedGradeInfo.ippan?.full || 0) + (this.selectedGradeInfo.kousei?.full || 0),
+        total: this.applyRounding((this.selectedGradeInfo.ippan?.full || 0) + (this.selectedGradeInfo.kousei?.full || 0)),
         ippanFull: this.selectedGradeInfo.ippan?.full || 0,
-        ippanHalf: this.selectedGradeInfo.ippan?.half || 0
+        ippanHalf: this.applyRounding(this.selectedGradeInfo.ippan?.half || 0),
+        tokuteiHalf: this.applyRounding(this.selectedGradeInfo.tokutei?.half || 0),
+        kaigoHalf: kaigoHalf
       };
+      // premiums.tokutei.half, kaigo.halfもapplyRoundingを通す
+      this.calculationResult['tokuteiHalf'] = this.applyRounding(this.selectedGradeInfo.tokutei?.half || 0);
+      this.calculationResult['kaigoHalf'] = kaigoHalf;
 
     } catch (error) {
       console.error('Error calculating insurance:', error);
@@ -566,20 +657,6 @@ export class InsurancePremiumCalculationComponent implements OnInit {
     }
   }
 
-  // 40歳の誕生月の翌月から65歳の誕生月までかどうか判定
-  isNursingInsurancePeriod(): boolean {
-    if (!this.selectedEmployeeBirth) return false;
-    const birth = new Date(this.selectedEmployeeBirth);
-    const now = new Date();
-    // 40歳の誕生月の翌月1日
-    const start = new Date(birth.getFullYear() + 40, birth.getMonth() + 1, 1);
-    // 65歳の誕生月の月末
-    const end = new Date(birth.getFullYear() + 65, birth.getMonth() + 1, 0);
-    // 今月1日
-    const nowMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    return nowMonth >= start && nowMonth <= end;
-  }
-
   // 計算結果を保存
   async saveCalculationResult() {
     if (!this.selectedEmployeeId || !this.selectedGradeInfo) {
@@ -589,20 +666,41 @@ export class InsurancePremiumCalculationComponent implements OnInit {
 
     try {
       // 1月から3月の場合は年度を1年進める
-      const yearMonth = this.adjustYearForBonus(this.selectedYear, this.selectedMonth);
-      const isNursingPeriod = this.isNursingInsurancePeriod();
+      const yearMonth = this.selectedYear + this.selectedMonth;
 
-      // 介護保険料の計算（Decimal.jsを使用）
+      // is_applicableを再取得（念のため）
+      let healthApplicable = false;
+      let nursingApplicable = false;
+      let pensionApplicable = false;
+      const docId = this.getDocIdFromYearAndMonth(this.selectedYear, this.selectedMonth);
+      const judgementRef = doc(this.firestore, 'employees', this.selectedEmployeeId, 'insurance_judgements', docId);
+      const judgementSnap = await getDoc(judgementRef);
+      if (judgementSnap.exists()) {
+        const data = judgementSnap.data();
+        healthApplicable = data['health'] === 'in';
+        nursingApplicable = data['nursing'] === 'in';
+        pensionApplicable = data['pension'] === 'in';
+      }
+      // nursingApplicableがtrueならhealthApplicableはfalse
+      if (nursingApplicable) healthApplicable = false;
+
+      // --- 介護保険の計算ロジック追加 ---
+      let kaigoIsApplicable = false;
       let kaigoFull = 0;
       let kaigoHalf = 0;
-      if (isNursingPeriod) {
-        const tokuteiFull = new Decimal(this.selectedGradeInfo.tokutei?.full || 0);
-        const tokuteiHalf = new Decimal(this.selectedGradeInfo.tokutei?.half || 0);
-        const ippanFull = new Decimal(this.selectedGradeInfo.ippan?.full || 0);
-        const ippanHalf = new Decimal(this.selectedGradeInfo.ippan?.half || 0);
+      if (nursingApplicable && this.selectedGradeInfo?.tokutei && this.selectedGradeInfo?.ippan) {
+        kaigoIsApplicable = true;
+        // Decimal.jsを使用して計算（四捨五入前の値で計算）
+        const tokuteiFull = new Decimal(this.selectedGradeInfo.tokutei.full || 0);
+        const ippanFull = new Decimal(this.selectedGradeInfo.ippan.full || 0);
         kaigoFull = tokuteiFull.minus(ippanFull).toNumber();
-        kaigoHalf = tokuteiHalf.minus(ippanHalf).toNumber();
+        
+        const tokuteiHalf = new Decimal(this.selectedGradeInfo.tokutei.half || 0);
+        const ippanHalf = new Decimal(this.selectedGradeInfo.ippan.half || 0);
+        // 計算後に四捨五入を適用
+        kaigoHalf = this.applyRounding(tokuteiHalf.minus(ippanHalf).toNumber());
       }
+      // --- ここまで ---
 
       const premiumData: InsurancePremium = {
         year_month: yearMonth,
@@ -612,29 +710,28 @@ export class InsurancePremiumCalculationComponent implements OnInit {
         salaryMin: this.selectedGradeInfo.salaryMin || 0,
         salaryMax: this.selectedGradeInfo.salaryMax || 0,
         age: this.selectedEmployeeAge || 0,
-        is_nursing_insurance_period: isNursingPeriod,
         birth_date: this.selectedEmployeeBirth || '',
         premiums: {
           ippan: {
             full: this.selectedGradeInfo.ippan?.full || 0,
             half: this.applyRounding(this.selectedGradeInfo.ippan?.half || 0),
-            is_applicable: !isNursingPeriod,
+            is_applicable: healthApplicable,
             is_initial: true
           },
           tokutei: {
             full: this.selectedGradeInfo.tokutei?.full || 0,
             half: this.applyRounding(this.selectedGradeInfo.tokutei?.half || 0),
-            is_applicable: isNursingPeriod
+            is_applicable: nursingApplicable
           },
           kousei: {
             full: this.selectedGradeInfo.kousei?.full || 0,
             half: this.applyRounding(this.selectedGradeInfo.kousei?.half || 0),
-            is_applicable: true
+            is_applicable: pensionApplicable
           },
           kaigo: {
-            full: kaigoFull,
-            half: this.applyRounding(kaigoHalf),
-            is_applicable: isNursingPeriod
+            full: kaigoIsApplicable ? kaigoFull : 0,
+            half: kaigoIsApplicable ? kaigoHalf : 0,
+            is_applicable: kaigoIsApplicable
           }
         },
         total: this.calculationResult.total,
@@ -676,7 +773,9 @@ export class InsurancePremiumCalculationComponent implements OnInit {
           employmentInsurance: 0,
           total: savedResult.total,
           ippanFull: savedResult.premiums.ippan.full,
-          ippanHalf: savedResult.premiums.ippan.half
+          ippanHalf: savedResult.premiums.ippan.half,
+          tokuteiHalf: savedResult.premiums.tokutei.half,
+          kaigoHalf: savedResult.premiums.kaigo.half
         };
       }
     } catch (error) {
@@ -757,15 +856,27 @@ export class InsurancePremiumCalculationComponent implements OnInit {
 
   // パターン切替
   toggleRoundingPattern() {
-    this.roundingPattern = this.roundingPattern === 'round' ? 'custom' : 'round';
+    this.roundingPattern = this.roundingPattern === 'custom' ? 'round' : 'custom';
   }
 
   // パターンに応じた整数化関数
   applyRounding(value: number): number {
-    if (this.roundingPattern === 'round') {
-      return Math.round(value);
+    if (this.roundingPattern === 'custom') {
+      // 0.5以下切り捨て、0.5超切り上げ（0.5ちょうども切り捨て）
+      const decimal = value - Math.floor(value);
+      if (decimal <= 0.5) {
+        return Math.floor(value);
+      } else {
+        return Math.ceil(value);
+      }
     } else {
-      return Math.floor(value + 0.5);
+      // 0.5未満切り捨て、0.5以上切り上げ（0.5ちょうどは切り上げ）
+      const decimal = value - Math.floor(value);
+      if (decimal < 0.5) {
+        return Math.floor(value);
+      } else {
+        return Math.ceil(value);
+      }
     }
   }
 
@@ -973,10 +1084,8 @@ export class InsurancePremiumCalculationComponent implements OnInit {
     }
 
     try {
-      // 賞与計算の場合は年度を調整
-      const yearMonth = this.isBonusCalculation ? 
-        this.adjustYearForBonus(this.selectedYear, this.selectedMonth) :
-        `${this.selectedYear}${this.selectedMonth}`;
+      // year_monthを「2025-04」のような形式で生成
+      const yearMonth = this.selectedYear + '-' + this.selectedMonth;
 
       const salaryCol = collection(this.firestore, 'employees', this.selectedEmployeeId, 'salaries');
       const q = query(salaryCol, where('year_month', '==', yearMonth));
@@ -988,16 +1097,20 @@ export class InsurancePremiumCalculationComponent implements OnInit {
         return;
       }
 
-      const salaryData = snapshot.docs[0].data();
-      const bonusDetail = salaryData['details']?.find((detail: any) => detail.type === '賞与');
-      
-      if (bonusDetail) {
-        this.bonusAmount = bonusDetail.amount || 0;
-        this.hasBonus = true;
-      } else {
-        this.bonusAmount = 0;
-        this.hasBonus = false;
-      }
+      // 複数ドキュメント・複数details対応
+      let totalBonus = 0;
+      snapshot.docs.forEach(docSnap => {
+        const salaryData = docSnap.data();
+        if (Array.isArray(salaryData['details'])) {
+          salaryData['details'].forEach((detail: any) => {
+            if (detail.type === 'bonus') {
+              totalBonus += detail.amount || 0;
+            }
+          });
+        }
+      });
+      this.bonusAmount = totalBonus;
+      this.hasBonus = totalBonus > 0;
     } catch (error) {
       console.error('Error loading bonus amount:', error);
       this.bonusAmount = 0;
@@ -1005,62 +1118,123 @@ export class InsurancePremiumCalculationComponent implements OnInit {
     }
   }
 
-  // 賞与計算時の年度調整メソッド
-  private adjustYearForBonus(year: string, month: string): string {
-    // 1月から3月の場合は年度を1年進める
-    const monthNum = parseInt(month, 10);
-    if (monthNum >= 1 && monthNum <= 3) {
-      return `${parseInt(year, 10) + 1}${month}`;
-    }
-    return `${year}${month}`;
-  }
-
   // 賞与保険料計算
   async calculateBonusInsurance() {
-    await this.printPrefectureIds();
+    this.isBonusCalculation = true;
+    this.isBonusLoading = true;
+    this.calculationResult = {
+      healthInsurance: 0,
+      nursingInsurance: 0,
+      pensionInsurance: 0,
+      employmentInsurance: 0,
+      total: 0,
+      ippanFull: 0,
+      ippanHalf: 0,
+      tokuteiHalf: 0,
+      kaigoHalf: 0
+    };
     try {
-      // 都道府県と年度の確認
-      if (!this.selectedPrefectureId || !this.selectedYear) {
-        alert('都道府県・年度を選択してください');
+      if (!this.selectedYear) {
+        alert('年度を選択してください');
+        this.isBonusLoading = false;
         return;
       }
-      console.log('都道府県ID:', this.selectedPrefectureId);
-      console.log('年度:', this.selectedYear);
-
       // 等級情報の確認
       if (!this.selectedGrade || !this.selectedGradeInfo) {
         alert('従業員の等級情報が取得できません');
+        this.isBonusLoading = false;
         return;
       }
-
       // 賞与額の確認
+      await this.loadBonusAmount(); // 最新の賞与額を取得
       if (!this.bonusAmount || this.bonusAmount <= 0) {
         alert('賞与額を入力してください');
+        this.isBonusLoading = false;
         return;
       }
+      // 年度内の賞与合計を取得し、上限573万円を超えた分は保険料をかけない
+      // 年度の開始・終了（4月～翌年3月）
+      const year = this.selectedYear;
+      const startMonth = '04';
+      const endMonth = '03';
+      const yearStart = year + '-' + startMonth;
+      const yearEnd = (parseInt(year, 10) + 1) + '-' + endMonth;
+      const yearMonth = this.selectedYear + '-' + this.selectedMonth;
+      const premiumsCol = collection(this.firestore, 'employees', this.selectedEmployeeId, 'insurance_premiums');
+      const q = query(premiumsCol, where('is_bonus', '==', true));
+      const snapshot = await getDocs(q);
+      let totalBonus = 0;
+      snapshot.docs.forEach(doc => {
+        const ym = doc.data()['year_month'];
+        // 今回保存するyearMonthは除外
+        if (ym !== yearMonth && ym >= yearStart && ym <= yearEnd) {
+          totalBonus += doc.data()['bonus_amount'] || 0;
+        }
+      });
+      const bonusLimit = 5730000;
+      const alreadyUsed = totalBonus;
+      const available = Math.max(0, bonusLimit - alreadyUsed);
+      const targetBonus = Math.min(this.bonusAmount, available);
+      // 千円未満を切り捨て
+      const flooredBonusAmount = Math.floor(targetBonus / 1000) * 1000;
+      console.log('賞与額（千円未満切り捨て後）:', flooredBonusAmount);
+      const bonus = new Decimal(flooredBonusAmount);
 
-      // 賞与額を標準報酬月額の範囲内に収める
-      const standardSalary = this.selectedGradeInfo.standardSalary || 0;
-      const cappedBonus = Math.min(Math.max(this.bonusAmount, standardSalary * 0.5), standardSalary * 6);
+      // 判定取得（insurance_judgementsサブコレクションからhealth, nursing, pension）
+      this._lastInsuranceApplicable = await this.getInsuranceApplicableFromJudgement(this.selectedYear, this.selectedMonth);
 
-      // 計算結果を設定
+      // 都道府県の料率を取得
+      const prefectureDoc = await getDoc(doc(this.firestore, 'prefectures', this.selectedPrefectureId));
+      if (!prefectureDoc.exists()) {
+        alert('都道府県の料率データが取得できません');
+        this.isBonusLoading = false;
+        return;
+      }
+      const rates = prefectureDoc.data();
+      const ippanRate = new Decimal(rates['ippan_rate'] || 0);
+      const kouseiRate = new Decimal(rates['kousei_rate'] || 0);
+      const tokuteiRate = new Decimal(rates['tokutei_rate'] || 0);
+      const kaigoRate = new Decimal(rates['kaigo_rate'] || 0);
+
+      // 健康保険（一般・2号）は年度合計で573万円制限
+      const ippanBonusRaw = bonus.mul(ippanRate).toNumber();
+      const tokuteiBonusRaw = bonus.mul(tokuteiRate).toNumber();
+      const ippanBonus = this.applyRounding(ippanBonusRaw);
+      const tokuteiBonus = this.applyRounding(tokuteiBonusRaw);
+      const ippanHalf = this.applyRounding(ippanBonus / 2);
+      const tokuteiHalf = this.applyRounding(tokuteiBonus / 2);
+      // 介護保険（2号-一般）
+      const kaigoBonus = this.applyRounding(tokuteiBonus - ippanBonus);
+      const kaigoHalf = this.applyRounding(tokuteiHalf - ippanHalf);
+      // 厚生年金は各月150万円上限＋千円未満切り捨て
+      const kouseiTargetBonus = Math.min(this.bonusAmount, 1500000);
+      const kouseiFlooredBonus = Math.floor(kouseiTargetBonus / 1000) * 1000;
+      const kouseiBonusRaw = new Decimal(kouseiFlooredBonus).mul(kouseiRate).toNumber();
+      const kouseiBonus = this.applyRounding(kouseiBonusRaw);
+      const kouseiHalf = this.applyRounding(kouseiBonus / 2);
+      console.log(`厚生年金: ${kouseiFlooredBonus} × ${kouseiRate.toString()} = ${kouseiBonus}`);
+
       this.bonusCalculationResult = {
-        healthInsurance: this.selectedGradeInfo.ippan?.full || 0,
-        nursingInsurance: 0,
-        pensionInsurance: this.selectedGradeInfo.kousei?.full || 0,
+        healthInsurance: ippanBonus,
+        nursingInsurance: kaigoBonus,
+        pensionInsurance: kouseiBonus,
         employmentInsurance: 0,
-        total: (this.selectedGradeInfo.ippan?.full || 0) + (this.selectedGradeInfo.kousei?.full || 0),
-        ippanFull: this.selectedGradeInfo.ippan?.full || 0,
-        ippanHalf: this.selectedGradeInfo.ippan?.half || 0
+        total: ippanBonus + (kaigoBonus > 0 ? kaigoBonus : 0) + kouseiBonus,
+        ippanFull: ippanBonus,
+        ippanHalf: ippanHalf,
+        tokuteiFull: tokuteiBonus,
+        tokuteiHalf: tokuteiHalf,
+        kaigoFull: kaigoBonus,
+        kaigoHalf: kaigoHalf,
+        kouseiFull: kouseiBonus,
+        kouseiHalf: kouseiHalf
       };
-
-      this.isBonusCalculation = true;
-      // 賞与額を再取得（年度調整後）
-      await this.loadBonusAmount();
-
+      console.log('賞与計算結果:', this.bonusCalculationResult);
+      this.isBonusLoading = false;
     } catch (error) {
       console.error('Error calculating bonus insurance:', error);
       alert('賞与保険料の計算中にエラーが発生しました');
+      this.isBonusLoading = false;
     }
   }
 
@@ -1071,5 +1245,62 @@ export class InsurancePremiumCalculationComponent implements OnInit {
 
   async onBonusMonthChange() {
     await this.loadBonusAmount();
+  }
+
+  // 賞与計算結果の保存
+  async saveBonusCalculationResult() {
+    if (!this.selectedEmployeeId || !this.bonusCalculationResult) {
+      alert('従業員と賞与計算結果を選択してください');
+      return;
+    }
+    try {
+      // year_monthを「2025-04」のような形式で生成
+      const yearMonth = this.selectedYear + '-' + this.selectedMonth;
+      // 判定を取得
+      const applicable = await this.getInsuranceApplicableFromJudgement(this.selectedYear, this.selectedMonth);
+      const premiumData = {
+        year_month: yearMonth,
+        is_bonus: true,
+        bonus_amount: this.bonusAmount,
+        grade: this.selectedGrade || '',
+        standard_salary: this.selectedGradeInfo?.standardSalary || 0,
+        standardSalary: this.selectedGradeInfo?.standardSalary || 0,
+        salaryMin: this.selectedGradeInfo?.salaryMin || 0,
+        salaryMax: this.selectedGradeInfo?.salaryMax || 0,
+        age: this.selectedEmployeeAge || 0,
+        birth_date: this.selectedEmployeeBirth || '',
+        premiums: {
+          ippan: {
+            full: this.bonusCalculationResult.ippanFull || 0,
+            half: this.bonusCalculationResult.ippanHalf || 0,
+            is_applicable: applicable.ippan,
+            is_initial: false
+          },
+          tokutei: {
+            full: this.bonusCalculationResult.tokuteiFull || 0,
+            half: this.bonusCalculationResult.tokuteiHalf || 0,
+            is_applicable: applicable.tokutei
+          },
+          kousei: {
+            full: this.bonusCalculationResult.kouseiFull || 0,
+            half: this.bonusCalculationResult.kouseiHalf || 0,
+            is_applicable: applicable.kousei
+          },
+          kaigo: {
+            full: applicable.tokutei ? (this.bonusCalculationResult.kaigoFull || 0) : 0,
+            half: applicable.tokutei ? (this.bonusCalculationResult.kaigoHalf || 0) : 0,
+            is_applicable: applicable.tokutei // 介護保険はtokutei（2号）と連動
+          }
+        },
+        total: this.bonusCalculationResult.total,
+        created_at: new Date(),
+        updated_at: new Date()
+      };
+      await this.insurancePremiumService.saveInsurancePremium(this.selectedEmployeeId, premiumData);
+      alert('賞与計算結果を保存しました');
+    } catch (error) {
+      console.error('Error saving bonus calculation result:', error);
+      alert('保存中にエラーが発生しました');
+    }
   }
 }

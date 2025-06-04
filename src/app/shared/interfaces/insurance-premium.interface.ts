@@ -16,7 +16,6 @@ export interface InsurancePremium {
   salaryMin: number;
   salaryMax: number;
   age: number;
-  is_nursing_insurance_period: boolean;
   birth_date: string;
   premiums: {
     ippan: {

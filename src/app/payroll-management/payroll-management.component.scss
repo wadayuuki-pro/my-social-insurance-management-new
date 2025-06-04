@@ -248,10 +248,11 @@ button:hover {
 // インポートセクション
 .import-section {
   width: 100%;
-  padding: 1.5rem;
+  padding: 2rem 1.5rem;
   background: #fff;
-  border-radius: 8px;
+  border-radius: 12px;
   box-shadow: 0 2px 8px rgba(25, 118, 210, 0.06);
+  margin-bottom: 2rem;
 
   h3 {
     color: #1976d2;
@@ -266,25 +267,40 @@ button:hover {
   gap: 1rem;
   margin-bottom: 1rem;
 
-  input[type="file"] {
-    padding: 0.5rem;
-    border: 2px dashed #b0bec5;
-    border-radius: 6px;
-    background: #f8fafc;
+  .file-label {
+    display: flex;
+    align-items: center;
+    gap: 1em;
+    font-weight: bold;
     cursor: pointer;
-
-    &:hover {
-      border-color: #1976d2;
+    .file-label-text {
+      color: #1976d2;
+      font-size: 1.1em;
+    }
+    input[type='file'] {
+      display: none;
     }
   }
 }
 
 .file-input-info {
   color: #666;
-  font-size: 0.9rem;
-
+  font-size: 0.95em;
   p {
-    margin: 0.3rem 0;
+    margin: 0.2em 0;
+  }
+}
+
+.button-row {
+  display: flex;
+  gap: 1.5em;
+  justify-content: flex-start;
+  button {
+    font-size: 1.1em;
+    padding: 0.7em 2em;
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
   }
 }
 
@@ -485,6 +501,27 @@ button:hover {
     color: #333;
   }
 
+  .form-group {
+    display: flex;
+    align-items: center;
+    gap: 1.2em;
+    margin-bottom: 1.2em;
+  }
+  .form-group label {
+    min-width: 110px;
+    text-align: left;
+    font-weight: 500;
+    color: #1976d2;
+    margin-bottom: 0;
+    padding-right: 0.5em;
+  }
+  .form-group input,
+  .form-group select {
+    flex: 1 1 0;
+    min-width: 200px;
+    max-width: 350px;
+  }
+
   .detail-actions {
     display: flex;
     gap: 1rem;
@@ -545,4 +582,50 @@ button:hover {
       }
     }
   }
+}
+
+.file-label.file-label-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7em;
+  background: #1976d2;
+  color: #fff;
+  font-size: 1.1em;
+  font-weight: bold;
+  border-radius: 6px;
+  padding: 0.8em 2em;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.10);
+  border: none;
+  transition: background 0.2s, box-shadow 0.2s;
+  margin-bottom: 0.7em;
+  max-width: 300px;
+  width: 100%;
+  justify-content: center;
+  .file-label-text {
+    color: #fff !important;
+  }
+  mat-icon {
+    font-size: 1.4em;
+    vertical-align: middle;
+    color: #fff !important;
+  }
+  &:hover, &:focus {
+    background: #1256a3;
+    box-shadow: 0 4px 16px rgba(25, 118, 210, 0.18);
+    color: #fff;
+    text-decoration: none;
+    .file-label-text {
+      color: #fff !important;
+    }
+    mat-icon {
+      color: #fff !important;
+    }
+  }
+}
+.selected-file-name {
+  color: #1976d2;
+  font-size: 0.98em;
+  margin-bottom: 0.5em;
+  margin-left: 0.2em;
 }

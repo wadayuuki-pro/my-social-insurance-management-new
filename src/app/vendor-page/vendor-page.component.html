@@ -46,6 +46,17 @@
       <label>業種</label>
       <input type="text" formControlName="industry" placeholder="業種（任意）" />
     </div>
+    <div class="form-group">
+      <label>特定適用事業所かどうか<span class="required">*</span></label>
+      <div style="display: flex; gap: 1.5em; align-items: center;">
+        <label style="font-weight: normal;">
+          <input type="radio" formControlName="is_tokutei" [value]="false" checked /> 特定適用事業所でない
+        </label>
+        <label style="font-weight: normal;">
+          <input type="radio" formControlName="is_tokutei" [value]="true" /> 特定適用事業所である
+        </label>
+      </div>
+    </div>
     <button type="submit" [disabled]="companyForm.invalid">会社登録</button>
     <div *ngIf="companyRegisterError" class="error">{{ companyRegisterError }}</div>
     <div *ngIf="companyRegisterSuccess" style="color: #1976d2; margin-top: 0.5rem;">

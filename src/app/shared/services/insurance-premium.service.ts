@@ -128,13 +128,10 @@ export class InsurancePremiumService {
           }
 
           // --- 料率の抽出 ---
-          // 例: 8行目（インデックス7）のH列, J列, K列などに料率がある前提
-          // セルの値を直接参照する
           let ippan_rate = null;
           let tokutei_rate = null;
           let kousei_rate = null;
           try {
-            // F9/G9, H9/I9, J9/K9 の両方をチェック
             const getCell = (col: any, row: any) => firstSheet[XLSX.utils.encode_cell({ c: col, r: row })]?.v;
             // 一般保険料率（F9, G9）
             const ippan1 = getCell(5, 8);
@@ -189,17 +186,16 @@ export class InsurancePremiumService {
             };
           }
 
-          // Firestoreにデータを保存（年度単位でネスト）
+          // Firestoreにデータを保存
           const prefectureCollection = collection(this.firestore, 'prefectures');
           const prefectureDoc = doc(prefectureCollection, prefectureId);
           const yearCollection = collection(prefectureDoc, 'insurance_premiums', year, 'grades');
+          // 選択した都道府県に保存（従来通り）
           for (const [gradeId, premium] of Object.entries(premiums)) {
-            // 都道府県ごとの保存
             const gradeDoc = doc(yearCollection, gradeId);
             await setDoc(gradeDoc, premium);
           }
-
-          // --- 料率をprefecture_id直下に保存 ---
+          // 料率をprefecture_id直下に保存
           const rateData: any = {};
           if (ippan_rate !== null) rateData.ippan_rate = ippan_rate;
           if (tokutei_rate !== null) rateData.tokutei_rate = tokutei_rate;
@@ -207,6 +203,36 @@ export class InsurancePremiumService {
           if (Object.keys(rateData).length > 0) {
             await setDoc(prefectureDoc, rateData, { merge: true });
           }
+
+          // 全国にもgradesサブコレクション（E列まで）を保存
+          const zenkokuDoc = doc(prefectureCollection, '全国');
+          const zenkokuYearCollection = collection(zenkokuDoc, 'insurance_premiums', year, 'grades');
+          for (const row of dataRows) {
+            const gradeId = String(row[gradeIdx]).trim();
+            const standardSalary = this.parseNumber(row[salaryIdx]);
+            const salaryMin = this.parseNumber(row[minIdx]);
+            let salaryMax = this.parseNumber(row[maxIdx]);
+            if ((row[maxIdx] === null || row[maxIdx] === undefined || row[maxIdx] === '') && dataRows.indexOf(row) + 1 < dataRows.length) {
+              salaryMax = this.parseNumber(dataRows[dataRows.indexOf(row) + 1][minIdx]);
+            }
+            const gradeDoc = doc(zenkokuYearCollection, gradeId);
+            await setDoc(gradeDoc, {
+              standardSalary,
+              salaryMin,
+              salaryMax
+            });
+          }
+          // 全国ドキュメント直下にも年度・料率・更新日を保存
+          const zenkokuData = {
+            year,
+            rates: {
+              ippan_rate,
+              tokutei_rate,
+              kousei_rate
+            },
+            updated_at: new Date()
+          };
+          await setDoc(zenkokuDoc, zenkokuData, { merge: true });
 
           resolve();
         } catch (error) {

@@ -6,7 +6,6 @@
     <button [class.active]="selectedTab === 'summary'" (click)="selectTab('summary')">📊 ダッシュボードサマリー</button>
     <button [class.active]="selectedTab === 'line'" (click)="selectTab('line')">📈 折れ線グラフ</button>
     <button [class.active]="selectedTab === 'barpie'" (click)="selectTab('barpie')">📊 棒グラフ・円グラフ</button>
-    <button [class.active]="selectedTab === 'filter'" (click)="selectTab('filter')">📥 データ出力・フィルター</button>
   </div>
 
   <!-- 📊 ダッシュボードサマリー -->
@@ -137,28 +136,6 @@
     <div class="graph-section">
       <h3>従業員ステータス別人数</h3>
       <canvas id="barChart2" width="600" height="250"></canvas>
-    </div>
-  </div>
-
-  <!-- 📥 データ出力・フィルター -->
-  <div *ngIf="selectedTab === 'filter'">
-    <div class="filter-export-row">
-      <div class="filter-controls">
-        <label>期間指定:
-          <input type="month" value="2024-01"> ～ <input type="month" value="2024-06">
-        </label>
-        <label>拠点:
-          <select>
-            <option>全拠点</option>
-            <option>東京本社</option>
-            <option>大阪支社</option>
-          </select>
-        </label>
-      </div>
-      <div class="export-controls">
-        <button class="export-btn">CSV出力</button>
-        <button class="export-btn">PDF出力</button>
-      </div>
     </div>
   </div>
 

@@ -44,12 +44,37 @@ interface Employee {
   student_category?: string;
   employment_start_date?: string;
   office_id?: string;
+  userSelectedInsuranceStatus?: {
+    health?: 'in' | 'out' | 'exempt';
+    nursing?: 'in' | 'out' | 'exempt';
+    pension?: 'in' | 'out' | 'exempt';
+    is_auto_generated?: {
+      health?: boolean;
+      nursing?: boolean;
+      pension?: boolean;
+    };
+  };
 }
 
 interface InsuranceEligibility {
   isEligible: boolean;
   reason: string;
   requiredActions?: string[];
+  status?: string;
+}
+
+// 保険適用判定の型定義
+interface InsuranceJudgement {
+  health: 'in' | 'out' | 'exempt';
+  nursing: 'in' | 'out' | 'exempt';
+  pension: 'in' | 'out' | 'exempt';
+  updated_at: Date;
+  updated_by: string;
+  is_auto_generated?: {
+    health?: boolean;
+    nursing?: boolean;
+    pension?: boolean;
+  };
 }
 
 @Component({
@@ -63,6 +88,7 @@ export class EmployeeManagementComponent implements OnInit {
   employees: any[] = [];
   filteredEmployees: any[] = [];
   companyId: string = '';
+  companyIsTokutei: boolean = false;
   searchForm: FormGroup;
   searchSortForm: FormGroup;
   isSearchSortPanelOpen: boolean = false;
@@ -238,12 +264,24 @@ export class EmployeeManagementComponent implements OnInit {
 
   selectedInsuranceOfficeId: string = '';
   insuranceOfficeEmployees: Employee[] = [];
+  selectedOfficeIsTokutei: boolean | null = null; // 追加
 
   // 注意事項全文表示用
   showActionsModal: boolean = false;
   selectedActionsEmployee: any = null;
 
+  // 特記事項の選択肢を追加
+  remarksOptions: string[] = [
+    'なし',
+    '副業先',
+    'その他'
+  ];
+
   getRequiredActionsSummary(emp: any): string {
+    // 今月入社の新入社員なら最優先で表示
+    if (emp.isNewEmployeeThisMonth) {
+      return '新入社員です';
+    }
     // どこか1つでも「休職中です。有給か無給かを確認し判断してください」が含まれていたらそれだけ返す
     const leaveMsg = '休職中です。有給か無給かを確認し判断してください';
     if (
@@ -281,6 +319,21 @@ export class EmployeeManagementComponent implements OnInit {
       return overseasMsg;
     }
 
+    // --- ここから「届け出を作成してください。」の重複排除 ---
+    const todokeMsg = '届け出を作成してください。';
+    const allActions = [
+      ...(emp.healthInsuranceRequiredActions || []),
+      ...(emp.nursingInsuranceRequiredActions || []),
+      ...(emp.pensionInsuranceRequiredActions || [])
+    ];
+    // 「届け出を作成してください。」が1つでも含まれていれば、それだけ返す
+    if (allActions.includes(todokeMsg)) {
+      // 他に特記事項がなければ1つだけ返す
+      const onlyTodoke = allActions.filter(a => a !== todokeMsg).length === 0;
+      if (onlyTodoke) return todokeMsg;
+    }
+    // --- ここまで ---
+
     let summary = '';
     if (emp.healthInsuranceRequiredActions?.length) {
       summary += '健康保険：' + emp.healthInsuranceRequiredActions.join('、') + '\n';
@@ -291,7 +344,23 @@ export class EmployeeManagementComponent implements OnInit {
     if (emp.pensionInsuranceRequiredActions?.length) {
       summary += '厚生年金：' + emp.pensionInsuranceRequiredActions.join('、') + '\n';
     }
-    return summary.trim();
+    summary = summary.trim();
+    // どのrequiredActionsも空の場合、非正規雇用者なら「非正規労働者です」と返す
+    if (
+      (!emp.healthInsuranceRequiredActions || emp.healthInsuranceRequiredActions.length === 0) &&
+      (!emp.nursingInsuranceRequiredActions || emp.nursingInsuranceRequiredActions.length === 0) &&
+      (!emp.pensionInsuranceRequiredActions || emp.pensionInsuranceRequiredActions.length === 0)
+    ) {
+      if (
+        emp.employment_type === 'パートタイム' ||
+        emp.employment_type === 'アルバイト' ||
+        emp.employment_type === '契約社員' ||
+        emp.employment_type === 'インターン・研修生'
+      ) {
+        return '非正規労働者です';
+      }
+    }
+    return summary;
   }
 
   openActionsModal(emp: any) {
@@ -483,15 +552,41 @@ export class EmployeeManagementComponent implements OnInit {
         }
       }
     });
+
+    // 会社IDが取得できたらis_tokuteiを取得
+    this.employeeInfo$.subscribe(async info => {
+      if (info && info.company_id) {
+        this.companyId = info.company_id;
+        // companiesコレクションからis_tokutei取得
+        const companyDoc = await getDoc(doc(this.firestore, 'companies', this.companyId));
+        if (companyDoc.exists()) {
+          const data = companyDoc.data();
+          this.companyIsTokutei = !!data['is_tokutei'];
+        } else {
+          this.companyIsTokutei = false;
+        }
+      }
+    });
   }
 
+  selectedYear: number = new Date().getFullYear();
+  selectedMonth: number = new Date().getMonth() + 1;
+  yearOptions: number[] = [];
+  monthOptions: number[] = [1,2,3,4,5,6,7,8,9,10,11,12];
+
   async ngOnInit() {
-        this.authService.companyId$.subscribe(async companyId => {
-          if (companyId) {
-            this.companyId = companyId;
+    this.authService.companyId$.subscribe(async companyId => {
+      if (companyId) {
+        this.companyId = companyId;
         await this.loadEmployees();
       }
     });
+    // 年度リスト初期化
+    const thisYear = new Date().getFullYear();
+    this.yearOptions = [];
+    for (let y = thisYear - 2; y <= thisYear + 2; y++) {
+      this.yearOptions.push(y);
+    }
     // 検索欄の値が変わったらフィルタ
     this.searchForm.get('employee_id')!.valueChanges.subscribe(val => {
       this.filterEmployees(val);
@@ -779,7 +874,10 @@ export class EmployeeManagementComponent implements OnInit {
               grades[doc.id] = doc.data();
             });
             for (const [gradeId, grade] of Object.entries(grades)) {
-              if (saveData.expected_salary >= grade.salaryMin && saveData.expected_salary < grade.salaryMax) {
+              if (
+                saveData.expected_salary >= grade.salaryMin &&
+                (grade.salaryMax === 0 ? true : saveData.expected_salary < grade.salaryMax)
+              ) {
                 auto_grade = gradeId;
                 auto_standard_salary = grade.standardSalary;
                 break;
@@ -1061,7 +1159,10 @@ export class EmployeeManagementComponent implements OnInit {
             grades[doc.id] = doc.data();
           });
           for (const [gradeId, grade] of Object.entries(grades)) {
-            if (formValue.expected_salary >= grade.salaryMin && formValue.expected_salary < grade.salaryMax) {
+            if (
+              formValue.expected_salary >= grade.salaryMin &&
+              (grade.salaryMax === 0 ? true : formValue.expected_salary < grade.salaryMax)
+            ) {
               auto_grade = gradeId;
               auto_standard_salary = grade.standardSalary;
               break;
@@ -1235,7 +1336,10 @@ export class EmployeeManagementComponent implements OnInit {
     });
     let found = false;
     for (const [gradeId, grade] of Object.entries(grades)) {
-      if (salary >= grade.salaryMin && salary < grade.salaryMax) {
+      if (
+        salary >= grade.salaryMin &&
+        (grade.salaryMax === 0 ? true : salary < grade.salaryMax)
+      ) {
         if (mode === 'new') {
           this.newEmployeeForm.patchValue({ auto_grade: gradeId, auto_standard_salary: grade.standardSalary });
         } else {
@@ -1818,28 +1922,39 @@ export class EmployeeManagementComponent implements OnInit {
         where('department_id', '==', officeId)
       );
       const querySnapshot = await getDocs(q);
-      const employees = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-      })) as Employee[];
-
-      // sensitive_idsをまとめて取得
-      const sensitiveIdsPromises = employees.map(emp =>
-        getDoc(doc(this.firestore, 'sensitive_ids', emp.id))
-      );
-      const sensitiveDocs = await Promise.all(sensitiveIdsPromises);
-
-      // myNumberの有無をemployeesに付与
-      employees.forEach((emp, idx) => {
-        const sensitiveDoc = sensitiveDocs[idx];
-        const myNumber = sensitiveDoc.exists() ? sensitiveDoc.data()['myNumber'] : undefined;
-        console.log('従業員ID:', emp.id, 'myNumber:', myNumber, 'hasMyNumber:', !!myNumber);
-        emp.hasMyNumber = !!myNumber;
-      });
-
-      this.officeEmployees = employees;
+      const now = new Date();
+      const currentYearMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+      const employees = querySnapshot.docs.map(doc => {
+        const employee = { id: doc.id, ...doc.data() } as Employee;
+        // 今月入社の新入社員判定
+        const empStartDate = employee.employment_start_date ? new Date(employee.employment_start_date) : null;
+        if (empStartDate) {
+          const empYearMonth = empStartDate.getFullYear() + '-' + String(empStartDate.getMonth() + 1).padStart(2, '0');
+          (employee as any).isNewEmployeeThisMonth = (empYearMonth === currentYearMonth);
+        } else {
+          (employee as any).isNewEmployeeThisMonth = false;
+        }
+        // 保険適用判定を取得
+        this.getInsuranceJudgement(employee.id).then(judgement => {
+          if (judgement) {
+            employee.userSelectedInsuranceStatus = {
+              health: judgement.health,
+              nursing: judgement.nursing,
+              pension: judgement.pension,
+              is_auto_generated: judgement.is_auto_generated
+            };
+          }
+        });
+        // 自動判定を実行
+        this.updateInsuranceEligibility(employee);
+        return employee;
+      })
+      // 退職者を除外
+      .filter(emp => emp.status !== '退職');
+      return employees;
     } catch (error) {
-      console.error('従業員情報の取得に失敗しました:', error);
+      console.error('従業員一覧の取得に失敗しました:', error);
+      return [];
     }
   }
 
@@ -1913,11 +2028,24 @@ export class EmployeeManagementComponent implements OnInit {
   }
 
   async onInsuranceOfficeSelect() {
-    if (!this.selectedInsuranceOfficeId || !this.companyId) {
+    if (this.selectedInsuranceOfficeId && this.companyId) {
+      // 会社のis_tokutei取得
+      const companyDoc = await getDoc(doc(this.firestore, 'companies', this.companyId));
+      if (companyDoc.exists()) {
+        const data = companyDoc.data();
+        this.selectedOfficeIsTokutei = !!data['is_tokutei'];
+      } else {
+        this.selectedOfficeIsTokutei = null;
+      }
+      this.insuranceOfficeEmployees = await this.loadInsuranceOfficeEmployees(this.selectedInsuranceOfficeId);
+      // 各従業員の保険適用判定を自動保存
+      for (const emp of this.insuranceOfficeEmployees) {
+        await this.saveInitialInsuranceJudgement(emp);
+      }
+    } else {
       this.insuranceOfficeEmployees = [];
-      return;
+      this.selectedOfficeIsTokutei = null;
     }
-    await this.loadInsuranceOfficeEmployees(this.selectedInsuranceOfficeId);
   }
 
   async loadInsuranceOfficeEmployees(officeId: string): Promise<Employee[]> {
@@ -1930,30 +2058,61 @@ export class EmployeeManagementComponent implements OnInit {
       );
       
       const querySnapshot = await getDocs(q);
+      const targetDate = this.getJudgementTargetDate();
+      const currentYearMonth = targetDate.getFullYear() + '-' + String(targetDate.getMonth() + 1).padStart(2, '0');
       const employees = querySnapshot.docs.map(doc => {
         const employee = { id: doc.id, ...doc.data() } as Employee;
-        // 保険適用判定を実行
+        // 今月入社の新入社員判定
+        const empStartDate = employee.employment_start_date ? new Date(employee.employment_start_date) : null;
+        if (empStartDate) {
+          const empYearMonth = empStartDate.getFullYear() + '-' + String(empStartDate.getMonth() + 1).padStart(2, '0');
+          (employee as any).isNewEmployeeThisMonth = (empYearMonth === currentYearMonth);
+        } else {
+          (employee as any).isNewEmployeeThisMonth = false;
+        }
+        // 保険適用判定を取得
+        this.getInsuranceJudgement(employee.id).then(judgement => {
+          if (judgement) {
+            employee.userSelectedInsuranceStatus = {
+              health: judgement.health,
+              nursing: judgement.nursing,
+              pension: judgement.pension,
+              is_auto_generated: judgement.is_auto_generated
+            };
+          }
+        });
+        // 自動判定を実行
         this.updateInsuranceEligibility(employee);
         return employee;
       })
       // 退職者を除外
       .filter(emp => emp.status !== '退職');
-      this.insuranceOfficeEmployees = employees;
       return employees;
     } catch (error) {
-      console.error('Error loading office employees:', error);
-      this.insuranceOfficeEmployees = [];
+      console.error('従業員一覧の取得に失敗しました:', error);
       return [];
     }
   }
 
   // 健康保険の適用判定
   checkHealthInsuranceEligibility(employee: any): InsuranceEligibility {
+    // employment_start_dateが未来なら適用外
+    const targetDate = this.getJudgementTargetDate();
+    const empStartDate = employee.employment_start_date ? new Date(employee.employment_start_date) : null;
+    if (empStartDate && (empStartDate.getFullYear() > targetDate.getFullYear() ||
+        (empStartDate.getFullYear() === targetDate.getFullYear() && empStartDate.getMonth() > targetDate.getMonth()))) {
+      return {
+        isEligible: false,
+        reason: '入社前のため適用外'
+      };
+    }
     // 派遣社員は派遣元で管理するため、適用外
     if (employee.employment_type === '派遣社員') {
       return {
         isEligible: false,
-        reason: '派遣社員は派遣元で管理するため、適用外です。',
+        reason: '派遣社員は派遣元で管理するため、管理対象外です。',
+        requiredActions: ['届け出を作成してください。'],
+        status: 'exempt'
       };
     }
 
@@ -1972,16 +2131,26 @@ export class EmployeeManagementComponent implements OnInit {
       requiredActions: []
     };
 
-    // 産休・育休中は適用外
-    if (employee.status === '産休中' || employee.status === '育休中') {
-      result.reason = '産休・育休中のため適用外';
+    // 75歳以上は適用外
+    const age = this.calculateAge(employee.date_of_birth);
+    if (age >= 75) {
+      result.reason = '75歳以上のため健康保険適用外';
       return result;
+    }
+
+    // 産休・育休中は免除
+    if (employee.status === '産休中' || employee.status === '育休中') {
+      return {
+        isEligible: false,
+        reason: '産休・育休中のため免除',
+        requiredActions: ['届け出を作成してください。'],
+        status: 'exempt'
+      };
     }
 
     // 正社員は常に適用
     if (employee.employment_type === '正社員') {
       result.isEligible = true;
-      result.reason = '正社員のため適用';
       return result;
     }
 
@@ -1997,12 +2166,10 @@ export class EmployeeManagementComponent implements OnInit {
 
       if (weeklyHours >= 30) {
         result.isEligible = true;
-        result.reason = '週30時間以上のため年齢要件のみで適用';
       } else if (this.isLargeCompany()) {
         // 51人以上：従来通り
         if (weeklyHours >= 20 && monthlyIncome >= 88000 && employmentDuration >= (2/12) && !isStudent) {
           result.isEligible = true;
-          result.reason = '非正規労働者（51人以上）で全条件を満たしているため適用';
         } else {
           result.reason = '非正規労働者（51人以上）で全条件を満たしていないため適用外';
           if (weeklyHours < 20) result.requiredActions?.push('週20時間以上の勤務が必要');
@@ -2010,25 +2177,18 @@ export class EmployeeManagementComponent implements OnInit {
           if (employmentDuration < (2/12)) result.requiredActions?.push('2ヶ月以上の雇用契約が必要');
           if (isStudent) result.requiredActions?.push('学生は適用外');
         }
-      } else {
-        // 51人未満：従来通り
-        if (weeklyHours >= 20 && monthlyIncome >= 88000 && employmentDuration >= (2/12) && !isStudent) {
+      }else {
+        // 50人以下：週30時間以上のみ適用
+        if (weeklyHours >= 30) {
           result.isEligible = true;
-          result.reason = '非正規労働者（50人以下）で全条件を満たしているため適用';
         } else {
-          result.reason = '非正規労働者（50人以下）で全条件を満たしていないため適用外';
-          if (weeklyHours < 20) result.requiredActions?.push('週20時間以上の勤務が必要');
-          if (monthlyIncome < 88000) result.requiredActions?.push('月収8.8万円以上が必要');
-          if (employmentDuration < (2/12)) result.requiredActions?.push('2ヶ月以上の雇用契約が必要');
-          if (isStudent) result.requiredActions?.push('学生は適用外');
+          result.reason = '週30時間未満のため適用外';
+          result.requiredActions?.push('週30時間以上の勤務が必要');
         }
       }
     }
 
-    // 休職中の注意事項
-    if (employee.status === '休職中') {
-      result.requiredActions?.push('休職中です。有給か無給かを確認し判断してください');
-    }
+
     // 海外赴任中の注意事項
     if (employee.status === '海外赴任') {
       result.requiredActions?.push('海外赴任中です。');
@@ -2038,11 +2198,21 @@ export class EmployeeManagementComponent implements OnInit {
 
   // 介護保険の適用判定
   checkNursingInsuranceEligibility(employee: any): InsuranceEligibility {
+    // employment_start_dateが未来なら適用外
+    const targetDate = this.getJudgementTargetDate();
+    const empStartDate = employee.employment_start_date ? new Date(employee.employment_start_date) : null;
+    if (empStartDate && (empStartDate.getFullYear() > targetDate.getFullYear() ||
+        (empStartDate.getFullYear() === targetDate.getFullYear() && empStartDate.getMonth() > targetDate.getMonth()))) {
+      return {
+        isEligible: false,
+        reason: '入社前のため適用外'
+      };
+    }
     // 派遣社員は派遣元で管理するため、適用外
     if (employee.employment_type === '派遣社員') {
       return {
         isEligible: false,
-        reason: '派遣社員は派遣元で管理するため、適用外です。',
+        reason: '派遣社員は派遣元で管理するため、管理対象外です。',
         
       };
     }
@@ -2065,7 +2235,7 @@ export class EmployeeManagementComponent implements OnInit {
     // 年齢チェック
     const age = this.calculateAge(employee.date_of_birth);
     if (age < 40 || age >= 65) {
-      result.reason = `${age < 40 ? '40歳未満' : '65歳以上'}のため適用外`;
+      result.reason = `${age < 40 ? '40歳未満のため適用外' : '65歳以上のため会社での管理対象外です。'}`;
       return result;
     }
 
@@ -2078,18 +2248,26 @@ export class EmployeeManagementComponent implements OnInit {
     }
 
     result.isEligible = true;
-    result.reason = '40歳以上65歳未満で健康保険適用対象のため適用';
     return result;
   }
 
   // 厚生年金の適用判定
   checkPensionInsuranceEligibility(employee: any): InsuranceEligibility {
+    // employment_start_dateが未来なら適用外
+    const targetDate = this.getJudgementTargetDate();
+    const empStartDate = employee.employment_start_date ? new Date(employee.employment_start_date) : null;
+    if (empStartDate && (empStartDate.getFullYear() > targetDate.getFullYear() ||
+        (empStartDate.getFullYear() === targetDate.getFullYear() && empStartDate.getMonth() > targetDate.getMonth()))) {
+      return {
+        isEligible: false,
+        reason: '入社前のため適用外'
+      };
+    }
     // 派遣社員は派遣元で管理するため、適用外
     if (employee.employment_type === '派遣社員') {
       return {
         isEligible: false,
-        reason: '派遣社員は派遣元で管理するため、適用外です。',
-        
+        reason: '派遣社員は派遣元で管理するため、管理対象外です。',
       };
     }
 
@@ -2097,8 +2275,8 @@ export class EmployeeManagementComponent implements OnInit {
     if (employee.status === '退職') {
       return {
         isEligible: false,
-        reason: '退職者は適用外です。',
-        requiredActions: ['退職者は適用外です。']
+        reason: '退職者は管理対象外です。',
+        requiredActions: ['退職者は管理対象外です。']
       };
     }
 
@@ -2108,10 +2286,14 @@ export class EmployeeManagementComponent implements OnInit {
       requiredActions: []
     };
 
-    // 産休・育休中は適用外
+    // 産休・育休中は免除
     if (employee.status === '産休中' || employee.status === '育休中') {
-      result.reason = '産休・育休中のため適用外';
-      return result;
+      return {
+        isEligible: false,
+        reason: '産休・育休中のため免除',
+        requiredActions: ['届け出を作成してください。'],
+        status: 'exempt'
+      };
     }
 
     // 70歳以上は適用外
@@ -2124,7 +2306,6 @@ export class EmployeeManagementComponent implements OnInit {
     // 正社員は常に適用
     if (employee.employment_type === '正社員') {
       result.isEligible = true;
-      result.reason = '正社員のため適用';
       return result;
     }
 
@@ -2142,7 +2323,6 @@ export class EmployeeManagementComponent implements OnInit {
 
       if (weeklyHours >= 30 && !isStudent) {
         result.isEligible = true;
-        result.reason = '週30時間以上かつ昼間学生でないため無条件で適用';
       } else if (weeklyHours >= 30 && isStudent) {
         result.isEligible = false;
         result.reason = '週30時間以上だが昼間学生のため適用外';
@@ -2159,16 +2339,16 @@ export class EmployeeManagementComponent implements OnInit {
           if (isStudent) result.requiredActions?.push('学生は適用外');
         }
       } else {
-        // 51人未満：従来通り
-        if (weeklyHours >= 20 && monthlyIncome >= 88000 && employmentDuration >= (2/12) && !isStudent) {
+        // 50人以下：週30時間以上かつ昼間学生でない場合のみ適用
+        if (weeklyHours >= 30 && !isStudent) {
           result.isEligible = true;
-          result.reason = '非正規労働者（50人以下）で全条件を満たしているため適用';
+        } else if (weeklyHours >= 30 && isStudent) {
+          result.isEligible = false;
+          result.reason = '週30時間以上だが昼間学生のため適用外';
+          result.requiredActions?.push('昼間学生は適用外');
         } else {
-          result.reason = '非正規労働者（50人以下）で全条件を満たしていないため適用外';
-          if (weeklyHours < 20) result.requiredActions?.push('週20時間以上の勤務が必要');
-          if (monthlyIncome < 88000) result.requiredActions?.push('月収8.8万円以上が必要');
-          if (employmentDuration < (2/12)) result.requiredActions?.push('2ヶ月以上の雇用契約が必要');
-          if (isStudent) result.requiredActions?.push('学生は適用外');
+          result.reason = '週30時間未満のため適用外';
+          result.requiredActions?.push('週30時間以上の勤務が必要');
         }
       }
       if (result.requiredActions && result.requiredActions.length === 0) {
@@ -2176,10 +2356,6 @@ export class EmployeeManagementComponent implements OnInit {
       }
     }
 
-    // 休職中の注意事項
-    if (employee.status === '休職中') {
-      result.requiredActions?.push('休職中です。有給か無給かを確認し判断してください');
-    }
     // 海外赴任中の注意事項
     if (employee.status === '海外赴任') {
       result.requiredActions?.push('海外赴任中です。');
@@ -2200,9 +2376,16 @@ export class EmployeeManagementComponent implements OnInit {
     if (!dateOfBirth) return 0;
     const birthDate = new Date(dateOfBirth);
     const today = new Date();
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+
+    // 1日生まれの場合は1カ月前倒し
+    let effectiveBirthDate = new Date(birthDate);
+    if (birthDate.getDate() === 1) {
+      effectiveBirthDate.setMonth(birthDate.getMonth() - 1);
+    }
+
+    let age = today.getFullYear() - effectiveBirthDate.getFullYear();
+    const monthDiff = today.getMonth() - effectiveBirthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < effectiveBirthDate.getDate())) {
       age--;
     }
     return age;
@@ -2228,9 +2411,8 @@ export class EmployeeManagementComponent implements OnInit {
   // 会社の規模を判定するロジック
   // 51人以上ならtrue, 50人以下ならfalse
   private isLargeCompany(): boolean {
-    // 実際の実装では、会社情報から従業員数を取得して判定
-    // ここでは仮に従業員配列で判定
-    return this.employees.length >= 51;
+    // companiesコレクションのis_tokuteiで判定
+    return this.companyIsTokutei;
   }
 
   // 保険適用判定の更新
@@ -2239,17 +2421,196 @@ export class EmployeeManagementComponent implements OnInit {
     const nursingInsurance = this.checkNursingInsuranceEligibility(employee);
     const pensionInsurance = this.checkPensionInsuranceEligibility(employee);
 
-    employee.healthInsuranceStatus = healthInsurance.isEligible ? 'in' : 'out';
+    // 入社前のため適用外の場合は必ず 'out'
+    employee.healthInsuranceStatus = (healthInsurance.reason === '入社前のため適用外') ? 'out'
+      : (healthInsurance.status === 'exempt' ? 'exempt' : (healthInsurance.isEligible ? 'in' : 'out'));
+    employee.nursingInsuranceStatus = (nursingInsurance.reason === '入社前のため適用外') ? 'out'
+      : (nursingInsurance.status === 'exempt' ? 'exempt' : (nursingInsurance.isEligible ? 'in' : 'out'));
+    employee.pensionInsuranceStatus = (pensionInsurance.reason === '入社前のため適用外') ? 'out'
+      : (pensionInsurance.status === 'exempt' ? 'exempt' : (pensionInsurance.isEligible ? 'in' : 'out'));
+
     employee.healthInsuranceReason = healthInsurance.reason;
     employee.healthInsuranceRequiredActions = healthInsurance.requiredActions;
 
-    employee.nursingInsuranceStatus = nursingInsurance.isEligible ? 'in' : 'out';
     employee.nursingInsuranceReason = nursingInsurance.reason;
     employee.nursingInsuranceRequiredActions = nursingInsurance.requiredActions;
 
-    employee.pensionInsuranceStatus = pensionInsurance.isEligible ? 'in' : 'out';
     employee.pensionInsuranceReason = pensionInsurance.reason;
     employee.pensionInsuranceRequiredActions = pensionInsurance.requiredActions;
+  }
+
+  // 保険適用判定の保存
+  async saveInsuranceJudgement(employeeId: string, type: 'health' | 'nursing' | 'pension', value: 'in' | 'out' | 'exempt') {
+    try {
+      const docId = this.getSelectedJudgementDocId();
+      const insuranceRef = doc(this.firestore, 'employees', employeeId, 'insurance_judgements', docId);
+      // 既存のis_auto_generatedを取得
+      let isAutoGenerated: { [key: string]: boolean } = {
+        health: true,
+        nursing: true,
+        pension: true
+      };
+
+      const existingSnap = await getDoc(insuranceRef);
+      if (existingSnap.exists()) {
+        const data = existingSnap.data();
+        if (data['is_auto_generated'] && typeof data['is_auto_generated'] === 'object') {
+          isAutoGenerated = { ...isAutoGenerated, ...data['is_auto_generated'] };
+        }
+      }
+      isAutoGenerated[type] = false; // 今回変更した保険種別のみfalse
+
+      await setDoc(insuranceRef, {
+        [type]: value,
+        updated_at: new Date(),
+        updated_by: this.currentUserRole,
+        is_auto_generated: isAutoGenerated
+      }, { merge: true });
+    } catch (error) {
+      console.error('保険適用判定の保存に失敗しました:', error);
+      throw error;
+    }
+  }
+
+  // 保険適用判定の取得
+  async getInsuranceJudgement(employeeId: string): Promise<InsuranceJudgement | null> {
+    try {
+      const docId = this.getSelectedJudgementDocId();
+      const docRef = doc(this.firestore, 'employees', employeeId, 'insurance_judgements', docId);
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) return null;
+      const data = docSnap.data();
+      return {
+        health: data['health'],
+        nursing: data['nursing'],
+        pension: data['pension'],
+        updated_at: data['updated_at'],
+        updated_by: data['updated_by'],
+        is_auto_generated: data['is_auto_generated'] || { health: true, nursing: true, pension: true }
+      };
+    } catch (error) {
+      console.error('保険適用判定の取得に失敗しました:', error);
+      return null;
+    }
+  }
+
+  // 表示用の判定結果を取得
+  getDisplayedStatus(emp: any, type: 'health' | 'nursing' | 'pension'): string {
+    // ユーザーが手動で選択した値があればそれを返す
+    if (emp.userSelectedInsuranceStatus && emp.userSelectedInsuranceStatus[type]) {
+      return emp.userSelectedInsuranceStatus[type];
+    }
+    // なければ自動判定値
+    if (type === 'health') return emp.healthInsuranceStatus;
+    if (type === 'nursing') return emp.nursingInsuranceStatus;
+    if (type === 'pension') return emp.pensionInsuranceStatus;
+    return '';
+  }
+
+  // 保険適用判定の変更ハンドラ
+  async onInsuranceStatusChange(emp: any, type: 'health' | 'nursing' | 'pension', value: 'in' | 'out' | 'exempt') {
+    await this.saveInsuranceJudgement(emp.id, type, value);
+    // 画面上の表示も即時更新
+    if (!emp.userSelectedInsuranceStatus) {
+      emp.userSelectedInsuranceStatus = {
+        health: emp.healthInsuranceStatus || 'out',
+        nursing: emp.nursingInsuranceStatus || 'out',
+        pension: emp.pensionInsuranceStatus || 'out',
+        is_auto_generated: { health: true, nursing: true, pension: true }
+      };
+    }
+    emp.userSelectedInsuranceStatus[type] = value;
+    if (!emp.userSelectedInsuranceStatus.is_auto_generated) {
+      emp.userSelectedInsuranceStatus.is_auto_generated = { health: true, nursing: true, pension: true };
+    }
+    emp.userSelectedInsuranceStatus.is_auto_generated[type] = false;
+  }
+
+  // 初期保険適用判定の保存
+  async saveInitialInsuranceJudgement(emp: any) {
+    try {
+      const docId = this.getSelectedJudgementDocId();
+      const ref = doc(this.firestore, 'employees', emp.id, 'insurance_judgements', docId);
+      const existingSnap = await getDoc(ref);
+      let isAutoGenerated = { health: true, nursing: true, pension: true };
+
+      // 既存の手動変更情報を保持
+      if (existingSnap.exists()) {
+        const data = existingSnap.data();
+        if (data['is_auto_generated'] && typeof data['is_auto_generated'] === 'object') {
+          isAutoGenerated = { ...isAutoGenerated, ...data['is_auto_generated'] };
+        }
+      }
+
+      // 既存の判定があっても必ず上書き保存
+      await setDoc(ref, {
+        health: (emp.healthInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+        nursing: (emp.nursingInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+        pension: (emp.pensionInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+        updated_at: new Date(),
+        updated_by: 'system',
+        is_auto_generated: { health: true, nursing: true, pension: true }
+      });
+
+      // 画面上の表示を更新
+      if (!emp.userSelectedInsuranceStatus) {
+        emp.userSelectedInsuranceStatus = {
+          health: (emp.healthInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+          nursing: (emp.nursingInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+          pension: (emp.pensionInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+          is_auto_generated: { health: true, nursing: true, pension: true }
+        };
+      }
+    } catch (error) {
+      console.error('初期保険適用判定の保存に失敗しました:', error);
+    }
+  }
+
+  // すべて自動判定に戻す
+  async resetAllInsuranceJudgementsToAuto() {
+    if (!this.insuranceOfficeEmployees || this.insuranceOfficeEmployees.length === 0) return;
+    for (const emp of this.insuranceOfficeEmployees) {
+      try {
+        // 自動判定を再計算
+        this.updateInsuranceEligibility(emp);
+        const docId = this.getSelectedJudgementDocId();
+        const ref = doc(this.firestore, 'employees', emp.id, 'insurance_judgements', docId);
+        await setDoc(ref, {
+          health: (emp.healthInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+          nursing: (emp.nursingInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+          pension: (emp.pensionInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+          updated_at: new Date(),
+          updated_by: 'system',
+          is_auto_generated: { health: true, nursing: true, pension: true }
+        });
+        // 画面上の表示も更新
+        emp.userSelectedInsuranceStatus = {
+          health: (emp.healthInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+          nursing: (emp.nursingInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+          pension: (emp.pensionInsuranceStatus as 'in' | 'out' | 'exempt') || 'out',
+          is_auto_generated: { health: true, nursing: true, pension: true }
+        };
+      } catch (error) {
+        console.error('自動判定へのリセットに失敗:', error);
+      }
+    }
+  }
+
+  onJudgementDateChange() {
+    // 判定ロジックや従業員リストの再計算をここで呼び出す
+    if (this.selectedInsuranceOfficeId) {
+      this.onInsuranceOfficeSelect();
+    }
+  }
+
+  // 判定対象年月のドキュメントIDを返す
+  getSelectedJudgementDocId(): string {
+    return `${this.selectedYear}-${String(this.selectedMonth).padStart(2, '0')}`;
+  }
+
+  // 判定対象年月のDateを返す
+  getJudgementTargetDate(): Date {
+    return new Date(this.selectedYear, this.selectedMonth - 1, 1);
   }
 }
 

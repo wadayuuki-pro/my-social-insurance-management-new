@@ -6,7 +6,6 @@ import { InsuranceProceduresComponent } from './insurance-procedures/insurance-p
 import { ApplicationApprovalComponent } from './application-approval/application-approval.component';
 import { PayrollManagementComponent } from './payroll-management/payroll-management.component';
 import { InsurancePremiumCalculationComponent } from './insurance-premium-calculation/insurance-premium-calculation.component';
-import { ReportExportComponent } from './report-export/report-export.component';
 import { AdminPagesComponent } from './admin-pages/admin-pages.component';
 import { VendorPageComponent } from './vendor-page/vendor-page.component';
 import { vendorGuard } from './vendor.guard';
@@ -31,7 +30,6 @@ export const routes: Routes = [
     path: 'insurance-premium-calculation',
     loadComponent: () => import('./insurance-premium-calculation/insurance-premium-calculation.component').then(m => m.InsurancePremiumCalculationComponent)
   },
-  { path: 'report-export', component: ReportExportComponent },
   { path: 'admin-pages', component: AdminPagesComponent },
   { path: 'analysis-report', component: AnalysisReportComponent },
   { path: 'support-faq', component: SupportFaqComponent },

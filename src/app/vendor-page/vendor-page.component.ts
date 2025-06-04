@@ -56,7 +56,8 @@ export class VendorPageComponent {
       representative_name: ['', Validators.required],
       representative_title: [''],
       industry: [''],
-      prefecture_id: ['']
+      prefecture_id: [''],
+      is_tokutei: [false, Validators.required]
     });
 
     // 会社名の重複チェック（入力が変わるたびに）

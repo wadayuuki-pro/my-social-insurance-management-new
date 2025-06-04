@@ -1,5 +1,5 @@
 import { Component, OnInit } from '@angular/core';
-import { CommonModule, KeyValuePipe } from '@angular/common';
+import { CommonModule } from '@angular/common';
 import { Firestore, collection, addDoc, doc, getDocs, query, orderBy, updateDoc, where, deleteDoc, getDoc } from '@angular/fire/firestore';
 import { inject } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
@@ -13,6 +13,7 @@ import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { AuthService } from '../shared/services/auth.service';
 import { switchMap, map } from 'rxjs/operators';
 import { of, from } from 'rxjs';
+import { MatIconModule } from '@angular/material/icon';
 
 interface SalaryDetail {
   type: string;
@@ -47,14 +48,14 @@ interface SalarySummary {
   avgPrev3: number;
   diffRate: number;
   result: string;
-  gradeLast3: number | null;
-  gradePrev3: number | null;
+  gradeLast3: string | null;
+  gradePrev3: string | null;
 }
 
 @Component({
   selector: 'app-payroll-management',
   standalone: true,
-  imports: [CommonModule, FormsModule, ReactiveFormsModule, KeyValuePipe],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, MatIconModule],
   templateUrl: './payroll-management.component.html',
   styleUrls: ['./payroll-management.component.scss']
 })
@@ -146,8 +147,8 @@ export class PayrollManagementComponent implements OnInit {
   sheetNames: string[] = [];
   private _selectedSheetName: string = '';
 
-  gradeLast3: number | null = null;
-  gradePrev3: number | null = null;
+  gradeLast3: string | null = null;
+  gradePrev3: string | null = null;
 
   currentCompanyId: string = '';
 
@@ -156,11 +157,6 @@ export class PayrollManagementComponent implements OnInit {
   showCustomAllowanceListModal = false;
   customAllowanceForm: FormGroup;
   editingAllowanceId: string | null = null;
-
-  // 等級を数値順でソートする関数
-  sortByGrade = (a: {key: string}, b: {key: string}): number => {
-    return Number(a.key) - Number(b.key);
-  };
 
   selectedCSVFile: File | null = null;
   csvImportMessage: string = '';
@@ -624,6 +620,21 @@ export class PayrollManagementComponent implements OnInit {
     } as RegisteredSalary)).slice(0, 12).reverse(); // 昇順
   }
 
+  // 直近3ヶ月の年月を生成するヘルパーメソッド
+  private getLast3Months(year: number, month: number): string[] {
+    const months: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      let targetMonth = month - i;
+      let targetYear = year;
+      if (targetMonth <= 0) {
+        targetMonth += 12;
+        targetYear--;
+      }
+      months.unshift(`${targetYear}-${String(targetMonth).padStart(2, '0')}`);
+    }
+    return months;
+  }
+
   // 報酬月額変更自動判定ロジック
   async judgeSalaryChange() {
     this.autoJudgeAlert = '';
@@ -635,12 +646,41 @@ export class PayrollManagementComponent implements OnInit {
     this.gradeLast3 = null;
     this.gradePrev3 = null;
     if (this.autoJudgeSalaries.length < 6) return;
+    
     // 直近3ヶ月とその前3ヶ月の平均
-    const last3 = this.autoJudgeSalaries.slice(-3);
-    const prev3 = this.autoJudgeSalaries.slice(-6, -3);
-    const avg = (arr: RegisteredSalary[]) => arr.reduce((sum, s) => sum + (s.total_amount || 0), 0) / arr.length;
+    const latestSalary = this.autoJudgeSalaries[this.autoJudgeSalaries.length - 1];
+    if (!latestSalary) return;
+    
+    // 最新の年月から連続した3ヶ月を取得
+    const latestYearMonth = latestSalary.year_month;
+    const [latestYear, latestMonth] = latestYearMonth.split('-').map(Number);
+    
+    const last3Months = this.getLast3Months(latestYear, latestMonth);
+    const prev3Months = this.getLast3Months(latestYear, latestMonth - 3);
+    
+    // 該当する年月の給与情報を取得
+    const last3 = last3Months.map((ym: string) => 
+      this.autoJudgeSalaries.find(s => s.year_month === ym)
+    ).filter((s): s is RegisteredSalary => s !== undefined);
+    
+    const prev3 = prev3Months.map((ym: string) => 
+      this.autoJudgeSalaries.find(s => s.year_month === ym)
+    ).filter((s): s is RegisteredSalary => s !== undefined);
+    
+    if (last3.length < 3 || prev3.length < 3) {
+      this.autoJudgeAlert = '判定には直近6ヶ月の連続した給与データが必要です。';
+      return;
+    }
+    
+    // 賞与を除外した合計で平均を計算
+    const avg = (arr: RegisteredSalary[]) => arr.reduce((sum, s) => {
+      const nonBonusTotal = (s.details || []).filter(d => d.type !== 'bonus').reduce((a, d) => a + (d.amount || 0), 0);
+      return sum + nonBonusTotal;
+    }, 0) / arr.length;
+    
     this.avgLast3 = avg(last3);
     this.avgPrev3 = avg(prev3);
+    
     // 期間表示
     this.judgePeriodLast3 = `${last3[0].year_month} ～ ${last3[2].year_month}`;
     this.judgePeriodPrev3 = `${prev3[0].year_month} ～ ${prev3[2].year_month}`;
@@ -652,24 +692,34 @@ export class PayrollManagementComponent implements OnInit {
     gradesSnapshot.forEach(doc => {
       grades[doc.id] = doc.data();
     });
-    // 平均報酬月額から等級を判定
-    function getGradeIdBySalary(grades: { [key: string]: any }, salary: number): number | null {
+    function getGradeIdBySalary(grades: { [key: string]: any }, salary: number): string | null {
       for (const [gradeId, grade] of Object.entries(grades)) {
         if (salary >= grade.salaryMin && salary < grade.salaryMax) {
-          return Number(gradeId);
+          return gradeId;
         }
       }
       return null;
     }
     const gradeLast3 = getGradeIdBySalary(grades, this.avgLast3);
-    const gradePrev3 = getGradeIdBySalary(grades, this.avgPrev3);
     this.gradeLast3 = gradeLast3;
-    this.gradePrev3 = gradePrev3;
+    // employeesコレクションから現在登録されている等級を取得
+    let registeredGrade: string | null = null;
+    if (this.selectedEmployeeId) {
+      const emp = this.employees.find(e => e.id === this.selectedEmployeeId);
+      if (emp && emp.auto_grade !== undefined && emp.auto_grade !== null && emp.auto_grade !== '') {
+        registeredGrade = emp.auto_grade;
+      }
+    }
     // 等級差で判定
-    if (gradeLast3 !== null && gradePrev3 !== null) {
-      const diff = Math.abs(gradeLast3 - gradePrev3);
+    if (registeredGrade !== null && gradeLast3 !== null) {
+      // 先頭の数字を取得して比較
+      const getGradeNumber = (grade: string): number => {
+        const match = grade.match(/^\d+/);
+        return match ? parseInt(match[0], 10) : 0;
+      };
+      const diff = Math.abs(getGradeNumber(gradeLast3) - getGradeNumber(registeredGrade));
       if (diff >= 2) {
-      this.autoJudgeAlert = '2等級以上の変動が検出されました。標準報酬月額の変更届が必要です。';
+        this.autoJudgeAlert = '2等級以上の変動が検出されました。標準報酬月額の変更届が必要です。';
       }
     }
   }
@@ -694,10 +744,10 @@ export class PayrollManagementComponent implements OnInit {
     gradesSnapshot.forEach(doc => {
       grades[doc.id] = doc.data();
     });
-    function getGradeIdBySalary(grades: { [key: string]: any }, salary: number): number | null {
+    function getGradeIdBySalary(grades: { [key: string]: any }, salary: number): string | null {
       for (const [gradeId, grade] of Object.entries(grades)) {
         if (salary >= grade.salaryMin && salary < grade.salaryMax) {
-          return Number(gradeId);
+          return gradeId;
         }
       }
       return null;
@@ -714,30 +764,66 @@ export class PayrollManagementComponent implements OnInit {
         created_at: doc.data()['created_at']?.toDate(),
         updated_at: doc.data()['updated_at']?.toDate()
       } as RegisteredSalary)).slice(0, 12).reverse();
+      
       if (salaries.length < 6) continue;
-      const last3 = salaries.slice(-3);
-      const prev3 = salaries.slice(-6, -3);
-      const avg = (arr: RegisteredSalary[]) => arr.reduce((sum, s) => sum + (s.total_amount || 0), 0) / arr.length;
+      
+      const latestSalary = salaries[salaries.length - 1];
+      const latestYearMonth = latestSalary.year_month;
+      const [latestYear, latestMonth] = latestYearMonth.split('-').map(Number);
+      
+      const last3Months = this.getLast3Months(latestYear, latestMonth);
+      const prev3Months = this.getLast3Months(latestYear, latestMonth - 3);
+      
+      const last3 = last3Months.map((ym: string) => 
+        salaries.find(s => s.year_month === ym)
+      ).filter((s): s is RegisteredSalary => s !== undefined);
+      
+      const prev3 = prev3Months.map((ym: string) => 
+        salaries.find(s => s.year_month === ym)
+      ).filter((s): s is RegisteredSalary => s !== undefined);
+      
+      if (last3.length < 3 || prev3.length < 3) continue;
+      
+      const avg = (arr: RegisteredSalary[]) => arr.reduce((sum, s) => {
+        const nonBonusTotal = (s.details || []).filter(d => d.type !== 'bonus').reduce((a, d) => a + (d.amount || 0), 0);
+        return sum + nonBonusTotal;
+      }, 0) / arr.length;
+      
       const avgLast3 = avg(last3);
       const avgPrev3 = avg(prev3);
       const diffRate = avgPrev3 ? (avgLast3 - avgPrev3) / avgPrev3 : 0;
-      const gradeLast3 = getGradeIdBySalary(grades, avgLast3);
-      const gradePrev3 = getGradeIdBySalary(grades, avgPrev3);
+
+      // 現在の等級（employeesコレクションのauto_grade）
+      const currentGrade = emp.auto_grade || '';
+
+      // 直近3ヶ月の平均から等級を算出
+      const calculatedGrade = getGradeIdBySalary(grades, avgLast3);
+
+      // 判定結果の生成
       let result = '';
-      if (gradeLast3 !== null && gradePrev3 !== null && Math.abs(gradeLast3 - gradePrev3) >= 2) {
-        result = '2等級以上変動';
-      } else {
-        result = '変動なし';
+      if (currentGrade && calculatedGrade) {
+        // 先頭の数字を取得して比較
+        const getGradeNumber = (grade: string): number => {
+          const match = grade.match(/^\d+/);
+          return match ? parseInt(match[0], 10) : 0;
+        };
+        const diff = Math.abs(getGradeNumber(calculatedGrade) - getGradeNumber(currentGrade));
+        if (diff >= 2) {
+          result = '2等級以上の変動あり';
+        } else {
+          result = '変動なし';
+        }
       }
+
       this.salarySummaries.push({
         employeeId: emp.id,
         name: `${emp.last_name_kanji || ''} ${emp.first_name_kanji || ''}`.trim() + (emp.employee_code ? `（${emp.employee_code}）` : ''),
         avgLast3,
-        avgPrev3,
-        diffRate,
+        avgPrev3: 0,
+        diffRate: 0,
         result,
-        gradeLast3,
-        gradePrev3
+        gradeLast3: calculatedGrade,
+        gradePrev3: currentGrade
       });
     }
     this.isSummaryLoading = false;
@@ -758,57 +844,107 @@ export class PayrollManagementComponent implements OnInit {
     const empSnapshot = await getDocs(q);
     const employees = empSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     const allRows: any[] = [];
-    // type→labelマップ作成
-    const typeLabelMap: { [key: string]: string } = {};
-    for (const t of this.salaryTypes) {
-      typeLabelMap[t.value] = t.label;
-    }
     for (const empRaw of employees) {
       const emp = empRaw as any;
+      const departmentId = emp.department_id || emp.office_id || '';
       const salariesCol = collection(this.firestore, 'employees', emp.id, 'salaries');
       const salSnapshot = await getDocs(salariesCol);
       for (const docSnap of salSnapshot.docs) {
         const data = docSnap.data();
+        const yearMonth = data['year_month'] || '';
         const details = data['details'] || [];
-        if (Array.isArray(details) && details.length > 0) {
-          for (const detail of details) {
-            allRows.push({
-              companyId: emp.company_id,
-              employee_code: emp.employee_code || emp.id,
-              name: `${emp.last_name_kanji || ''}${emp.first_name_kanji || ''}`.trim(),
-              year_month: data['year_month'],
-              detail_type: typeLabelMap[detail.type] || detail.type,
-              detail_amount: detail.amount,
-              detail_note: detail.note,
-              total_amount: data['total_amount'],
-              taxable_amount: data['taxable_amount']
-            });
-          }
-        } else {
-          // detailsが空の場合も1行出力
+        // 基本給
+        const base = details.find((d: any) => d.type === 'base');
+        if (base) {
           allRows.push({
             companyId: emp.company_id,
+            departmentId,
             employee_code: emp.employee_code || emp.id,
             name: `${emp.last_name_kanji || ''}${emp.first_name_kanji || ''}`.trim(),
-            year_month: data['year_month'],
-            detail_type: '',
-            detail_amount: '',
-            detail_note: '',
-            total_amount: data['total_amount'],
-            taxable_amount: data['taxable_amount']
+            year_month: yearMonth,
+            item: '基本給',
+            amount: base.amount || 0
           });
         }
+        // 残業手当
+        const overtime = details.find((d: any) => d.type === 'overtime');
+        if (overtime) {
+          allRows.push({
+            companyId: emp.company_id,
+            departmentId,
+            employee_code: emp.employee_code || emp.id,
+            name: `${emp.last_name_kanji || ''}${emp.first_name_kanji || ''}`.trim(),
+            year_month: yearMonth,
+            item: '残業手当',
+            amount: overtime.amount || 0
+          });
+        }
+        // 通勤手当
+        const commuting = details.find((d: any) => d.type === 'commuting');
+        if (commuting) {
+          allRows.push({
+            companyId: emp.company_id,
+            departmentId,
+            employee_code: emp.employee_code || emp.id,
+            name: `${emp.last_name_kanji || ''}${emp.first_name_kanji || ''}`.trim(),
+            year_month: yearMonth,
+            item: '通勤手当',
+            amount: commuting.amount || 0
+          });
+        }
+        // 賞与
+        const bonus = details.find((d: any) => d.type === 'bonus');
+        if (bonus) {
+          allRows.push({
+            companyId: emp.company_id,
+            departmentId,
+            employee_code: emp.employee_code || emp.id,
+            name: `${emp.last_name_kanji || ''}${emp.first_name_kanji || ''}`.trim(),
+            year_month: yearMonth,
+            item: '賞与',
+            amount: bonus.amount || 0
+          });
+        }
+        // その他手当（基本・残業・通勤・賞与以外）
+        const excludeTypes = ['base', 'overtime', 'commuting', 'bonus', '基本給', '残業手当', '通勤手当', '賞与'];
+        details.filter((d: any) => !excludeTypes.includes(d.type)).forEach((other: any) => {
+          allRows.push({
+            companyId: emp.company_id,
+            departmentId,
+            employee_code: emp.employee_code || emp.id,
+            name: `${emp.last_name_kanji || ''}${emp.first_name_kanji || ''}`.trim(),
+            year_month: yearMonth,
+            item: other.type,
+            amount: other.amount || 0
+          });
+        });
       }
     }
     // CSV生成
-    const header = ['companyId','employee_code','name','year_month','detail_type','detail_amount','detail_note','total_amount','taxable_amount'];
-    const headerJp = ['会社ID','社員ID','氏名','対象年月','区分','金額','備考','総支給額','課税対象額'];
-    const csv = [headerJp.join(',')].concat(
-      allRows.map(row => header.map(h => '"' + String(row[h]).replace(/"/g, '""') + '"').join(','))
+    const header = ['会社ID','事業所ID','社員ID','氏名','対象年月','項目','金額'];
+    const csv = [header.join(',')].concat(
+      allRows.map(row => header.map(h => {
+        let value = row[
+          h === '会社ID' ? 'companyId' :
+          h === '事業所ID' ? 'departmentId' :
+          h === '社員ID' ? 'employee_code' :
+          h === '氏名' ? 'name' :
+          h === '対象年月' ? 'year_month' :
+          h === '項目' ? 'item' :
+          h === '金額' ? 'amount' : ''
+        ];
+        // 対象年月はYYYY-MM形式の文字列で出力
+        if (h === '対象年月') {
+          value = String(value).slice(0, 7); // 先頭7文字（YYYY-MM）
+        }
+        return '"' + String(value).replace(/"/g, '""') + '"';
+      }).join(','))
     ).join('\r\n');
     // ダウンロード
+    const now = new Date();
+    const fileName = `給与情報_${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}${now.getSeconds().toString().padStart(2,'0')}.csv`;
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    saveAs(blob, 'salaries_export.csv');
+    saveAs(blob, fileName);
   }
 
   // カスタム手当の読み込み
@@ -959,40 +1095,45 @@ export class PayrollManagementComponent implements OnInit {
           return row;
         });
       }
-      // 給与明細ごとにグループ化（社員ID＋年月）
+      // 社員ID＋年月ごとにグループ化
       const salaryMap: { [key: string]: any } = {};
       for (const row of rows) {
         // 全カラムが空の行はスキップ
         if (Object.values(row).every(v => !v || String(v).trim() === '')) continue;
-        // 列名のトリム
         const companyId = row['会社ID'] ? String(row['会社ID']).trim() : '';
         const empCode = row['社員ID'] ? String(row['社員ID']).trim() : '';
         const yearMonth = this.normalizeYearMonth(row['対象年月']);
-        // 主要カラムが空の行はスキップ（エラー件数にもカウントしない）
-        if (!companyId || !empCode || !yearMonth) continue;
-        const key = `${empCode}_${yearMonth}`;
+        const item = row['項目'] ? String(row['項目']).trim() : '';
+        const amount = Number(row['金額']) || 0;
+        if (!companyId || !empCode || !yearMonth || !item) continue;
+        // 賞与は同じ年月でも別レコードにする
+        const isBonus = item === '賞与';
+        const key = isBonus ? `${empCode}_${yearMonth}_bonus_${Math.random().toString(36).slice(2,8)}` : `${empCode}_${yearMonth}`;
         if (!salaryMap[key]) {
           salaryMap[key] = {
             employee_code: empCode,
             year_month: yearMonth,
-            total_amount: Number(row['総支給額']) || 0,
-            taxable_amount: Number(row['課税対象額']) || 0,
             details: [],
-        created_at: new Date(),
-        updated_at: new Date()
-      };
+            total_amount: 0,  // 初期値を0に設定
+            created_at: new Date(),
+            updated_at: new Date()
+          };
         }
-        if (row['区分'] || row['金額']) {
-          salaryMap[key].details.push({
-            type: row['区分'],
-            amount: Number(row['金額']) || 0,
-            note: row['備考'] || ''
-    });
-  }
+        // 項目→type変換
+        let type = '';
+        if (item === '基本給') type = 'base';
+        else if (item === '残業手当') type = 'overtime';
+        else if (item === '通勤手当') type = 'commuting';
+        else if (item === '賞与') type = 'bonus';
+        else type = item;
+        salaryMap[key].details.push({ type, amount });
+        // total_amountに加算
+        salaryMap[key].total_amount += amount;
       }
       // Firestoreへ保存
       const employeesCol = collection(this.firestore, 'employees');
       let errorCount = 0;
+      let importCount = 0;
       for (const key of Object.keys(salaryMap)) {
         const salary = salaryMap[key];
         if (!salary.employee_code || !this.currentCompanyId) {
@@ -1008,22 +1149,64 @@ export class PayrollManagementComponent implements OnInit {
         }
         const empId = empSnapshot.docs[0].id;
         const salariesCol = collection(this.firestore, 'employees', empId, 'salaries');
-        // 年月で既存ドキュメントを検索
-        const salSnapshot = await getDocs(query(salariesCol, where('year_month', '==', salary.year_month)));
-        if (!salSnapshot.empty) {
-          // 上書き
-          const docRef = doc(this.firestore, 'employees', empId, 'salaries', salSnapshot.docs[0].id);
-          await updateDoc(docRef, {
-            details: salary.details,
-            total_amount: salary.total_amount,
-            taxable_amount: salary.taxable_amount,
-            updated_at: new Date()
+        // --- 賞与の場合は同じ年月の賞与レコードがあれば上書き ---
+        const isBonusOnly = salary['details'].length === 1 && salary['details'][0].type === 'bonus';
+        let updated = false;
+        if (isBonusOnly) {
+          // 同じ年月・details.type==='bonus'のみのレコードを検索
+          const salSnapshot = await getDocs(query(salariesCol, where('year_month', '==', salary.year_month)));
+          let foundBonusDocId: string | null = null;
+          salSnapshot.forEach(docSnap => {
+            const data = docSnap.data();
+            if (Array.isArray(data['details']) && data['details'].length === 1 && data['details'][0].type === 'bonus') {
+              foundBonusDocId = docSnap.id;
+            }
           });
-        } else {
-          // 新規追加
-          await addDoc(salariesCol, salary);
+          if (foundBonusDocId) {
+            // 上書き
+            const docRef = doc(this.firestore, 'employees', empId, 'salaries', foundBonusDocId);
+            await updateDoc(docRef, {
+              details: salary['details'],
+              total_amount: salary.total_amount,
+              updated_at: new Date()
+            });
+            updated = true;
+          }
         }
+        if (!updated) {
+          // 通常処理（既存レコードがあれば上書き、なければ新規追加）
+          const salSnapshot = await getDocs(query(salariesCol, where('year_month', '==', salary.year_month)));
+          if (!salSnapshot.empty && !isBonusOnly) {
+            // 上書き
+            const docRef = doc(this.firestore, 'employees', empId, 'salaries', salSnapshot.docs[0].id);
+            await updateDoc(docRef, {
+              details: salary['details'],
+              total_amount: salary.total_amount,
+              updated_at: new Date()
+            });
+          } else if (!isBonusOnly) {
+            // 新規追加
+            await addDoc(salariesCol, salary);
+          } else if (isBonusOnly && !updated) {
+            // 賞与で既存がなければ新規追加
+            await addDoc(salariesCol, salary);
+          }
+        }
+        importCount++;
       }
+      // --- インポート履歴を1行で追加 ---
+      const historiesCol = collection(this.firestore, 'companies', this.currentCompanyId, 'salary_histories');
+      await addDoc(historiesCol, {
+        employee_id: '',
+        employee_name: '',
+        year_month: '',
+        details: [],
+        total_amount: 0,
+        operation: 'import',
+        operated_at: new Date(),
+        operator: 'システム',
+        changeMessage: 'インポートされました。'
+      });
       if (errorCount > 0) {
         this.csvImportMessage = `インポート完了（一部エラー: ${errorCount}件の社員IDまたは会社IDが不正）`;
         this.csvImportSuccess = false;
@@ -1092,6 +1275,10 @@ export class PayrollManagementComponent implements OnInit {
 
   // 変更内容メッセージ生成関数
   generateChangeMessage(current: any, prev: any): string {
+    // インポートの場合は既存のメッセージをそのまま使用
+    if (current.operation === 'import') {
+      return current.changeMessage || 'インポートされました。';
+    }
     if (!prev) {
       return '明細が追加されました';
     }

@@ -15,6 +15,7 @@ interface CompanyInfo {
   representative_name: string;
   contact_email: string;
   postal_code: string;
+  is_tokutei?: boolean;
   [key: string]: any;
 }
 
@@ -27,6 +28,7 @@ interface DepartmentInfo {
   company_id: string;
   office_number: string;
   manager_name: string;
+  insurer_number?: string;
   [key: string]: any;
 }
 
@@ -95,13 +97,15 @@ export class MasterSettingsAdminComponent {
     representative_name: '代表者名',
     contact_email: '連絡先メール',
     postal_code: '郵便番号',
+    is_tokutei: '特定適用事業所かどうか',
     department_name: '事業所名',
     location: '所在地',
     email: 'メール',
     department_id: '事業所ID',
     company_id: '会社ID',
     office_number: '事業所番号',
-    manager_name: '管理者名'
+    manager_name: '管理者名',
+    insurer_number: '保険者番号'
   };
 
   constructor(
@@ -133,6 +137,9 @@ export class MasterSettingsAdminComponent {
     if (companySnap.exists()) {
       this.companyInfo = companySnap.data() as CompanyInfo;
       this.companyForm = { ...this.companyInfo };
+      if (this.companyForm.is_tokutei === undefined) {
+        this.companyForm.is_tokutei = false;
+      }
     }
   }
 
@@ -175,6 +182,9 @@ export class MasterSettingsAdminComponent {
   startEditingCompany() {
     this.isEditingCompany = true;
     this.companyForm = { ...this.companyInfo };
+    if (this.companyForm.is_tokutei === undefined) {
+      this.companyForm.is_tokutei = false;
+    }
   }
 
   // 会社情報の編集キャンセル
