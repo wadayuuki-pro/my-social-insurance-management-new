@@ -809,6 +809,14 @@ export class EmployeeManagementComponent implements OnInit {
     this.detailForm.get('expected_salary')?.valueChanges.subscribe(val => {
       this.judgeGradeAndStandardSalary(val, 'detail');
     });
+
+    // 在籍ステータスの変更監視を追加
+    this.detailForm.get('status')?.valueChanges.subscribe(status => {
+      this.onStatusChange();
+    });
+    // 初期値の設定
+    this.onStatusChange();
+
     this.showDetailModal = true;
     this.detailSaveMessage = '';
   }
@@ -1294,12 +1302,12 @@ export class EmployeeManagementComponent implements OnInit {
 
   onStatusChange() {
     const status = this.detailForm.get('status')?.value;
-    this.showLeaveDates = ['休職中', '産休中', '育休中'].includes(status);
+    this.showLeaveDates = ['休職中', '産休中', '産休中（多胎妊娠）', '育休中'].includes(status);
   }
 
   onNewStatusChange() {
     const status = this.newEmployeeForm.get('status')?.value;
-    this.showNewLeaveDates = ['休職中', '産休中', '育休中'].includes(status);
+    this.showNewLeaveDates = ['休職中', '産休中', '産休中（多胎妊娠）', '育休中'].includes(status);
   }
 
   async judgeGradeAndStandardSalary(salary: number, mode: 'new' | 'detail') {
@@ -2157,6 +2165,113 @@ export class EmployeeManagementComponent implements OnInit {
     }
   }
 
+  // 退職者の判定
+  private isRetiredEmployee(employee: any): boolean {
+    if (employee.status !== '退職' && employee.status !== '退職予定') {
+      return false;
+    }
+
+    const targetDate = this.getJudgementTargetDate();
+    const endDate = employee.employment_end_date ? new Date(employee.employment_end_date) : null;
+    const startDate = employee.employment_start_date ? new Date(employee.employment_start_date) : null;
+    
+    if (!endDate) {
+      return true; // 終了日が未設定の場合は退職者として扱う
+    }
+
+    // 判定対象月の末日を取得
+    const lastDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+    
+    // 入社月の場合は、その月の保険料を発生させる
+    if (startDate && 
+        startDate.getFullYear() === targetDate.getFullYear() && 
+        startDate.getMonth() === targetDate.getMonth()) {
+      return false;
+    }
+    
+    // 終了日が判定対象月の末日以前の場合は退職者として扱う
+    return endDate <= lastDayOfMonth;
+  }
+
+  // 産休期間の判定
+  private isInMaternityLeavePeriod(employee: any): boolean {
+    if (employee.status !== '産休中' && employee.status !== '産休中（多胎妊娠）') {
+      return false;
+    }
+
+    const targetDate = this.getJudgementTargetDate();
+    const leaveStartDate = employee.leave_start_date ? new Date(employee.leave_start_date) : null;
+    
+    if (!leaveStartDate) {
+      return false;
+    }
+
+    // 出産予定日の日付を計算
+    const startDate = new Date(leaveStartDate);
+    // 多胎妊娠の場合は98日前、それ以外は42日前
+    const daysToSubtract = employee.status === '産休中（多胎妊娠）' ? 98 : 42;
+    startDate.setDate(startDate.getDate() - daysToSubtract);
+    
+    const endDate = new Date(leaveStartDate);
+    endDate.setDate(endDate.getDate() + 56);
+
+    // 判定対象月の末日を取得
+    const lastDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+    
+    // 産休期間内かどうかを判定
+    return targetDate >= startDate && targetDate <= endDate;
+  }
+
+  // 育休期間内の月末が含まれる月かどうかを判定
+  private isLastDayOfMonthInChildcareLeavePeriod(employee: any): boolean {
+    if (employee.status !== '育休中') {
+      return false;
+    }
+
+    const targetDate = this.getJudgementTargetDate();
+    const leaveStartDate = employee.leave_start_date ? new Date(employee.leave_start_date) : null;
+    const leaveEndDate = employee.leave_end_date ? new Date(employee.leave_end_date) : null;
+    
+    if (!leaveStartDate || !leaveEndDate) {
+      return false;
+    }
+
+    // 判定対象月の末日を取得
+    const lastDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+    
+    // 育休期間内に月末が含まれるかどうかを判定
+    return lastDayOfMonth >= leaveStartDate && lastDayOfMonth <= leaveEndDate;
+  }
+
+  // 育休期間内に14日以上含まれる月かどうかを判定
+  private isChildcareLeaveMoreThan14Days(employee: any): boolean {
+    if (employee.status !== '育休中') {
+      return false;
+    }
+
+    const targetDate = this.getJudgementTargetDate();
+    const leaveStartDate = employee.leave_start_date ? new Date(employee.leave_start_date) : null;
+    const leaveEndDate = employee.leave_end_date ? new Date(employee.leave_end_date) : null;
+    
+    if (!leaveStartDate || !leaveEndDate) {
+      return false;
+    }
+
+    // 判定対象月の初日と末日を取得
+    const firstDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+    const lastDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+
+    // 育休期間と判定対象月の重複期間を計算
+    const overlapStart = new Date(Math.max(leaveStartDate.getTime(), firstDayOfMonth.getTime()));
+    const overlapEnd = new Date(Math.min(leaveEndDate.getTime(), lastDayOfMonth.getTime()));
+
+    // 重複期間の日数を計算（ミリ秒を日数に変換）
+    const overlapDays = Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+    // 14日以上育休期間が含まれているかどうかを判定
+    return overlapDays >= 14;
+  }
+
   // 健康保険の適用判定
   checkHealthInsuranceEligibility(employee: any): InsuranceEligibility {
     // 特記事項が「副業先」の場合は無条件で適用外
@@ -2164,6 +2279,24 @@ export class EmployeeManagementComponent implements OnInit {
       return {
         isEligible: false,
         reason: '副業先のため適用外',
+        status: 'out'
+      };
+    }
+
+    // 退職者は適用外
+    if (this.isRetiredEmployee(employee)) {
+      return {
+        isEligible: false,
+        reason: '退職のため適用外',
+        status: 'out'
+      };
+    }
+
+    if (employee.employment_type === '派遣社員') {
+      return {
+        isEligible: false,
+        reason: '派遣社員は派遣元で管理するため、管理対象外です。',
+        status: 'out'
       };
     }
 
@@ -2174,25 +2307,8 @@ export class EmployeeManagementComponent implements OnInit {
         (empStartDate.getFullYear() === targetDate.getFullYear() && empStartDate.getMonth() > targetDate.getMonth()))) {
       return {
         isEligible: false,
-        reason: '入社前のため適用外'
-      };
-    }
-    // 派遣社員は派遣元で管理するため、適用外
-    if (employee.employment_type === '派遣社員') {
-      return {
-        isEligible: false,
-        reason: '派遣社員は派遣元で管理するため、管理対象外です。',
-        requiredActions: ['届け出を作成してください。'],
-        status: 'exempt'
-      };
-    }
-
-    // 退職者は適用外
-    if (employee.status === '退職') {
-      return {
-        isEligible: false,
-        reason: '退職者は適用外です。',
-        requiredActions: ['退職者は適用外です。']
+        reason: '入社前のため適用外',
+        status: 'out'
       };
     }
 
@@ -2206,27 +2322,14 @@ export class EmployeeManagementComponent implements OnInit {
     const age = this.calculateAge(employee.date_of_birth);
     if (age >= 75) {
       result.reason = '75歳以上のため健康保険適用外';
+      result.status = 'out';
       return result;
-    }
-
-    // 産休・育休中は免除
-    if (employee.status === '産休中' || employee.status === '育休中') {
-      return {
-        isEligible: false,
-        reason: '産休・育休中のため免除',
-        requiredActions: ['届け出を作成してください。'],
-        status: 'exempt'
-      };
     }
 
     // 正社員は常に適用
     if (employee.employment_type === '正社員') {
       result.isEligible = true;
-      return result;
-    }
-
-    // パート・アルバイト・契約社員・インターン・研修生の場合
-    if (employee.employment_type === 'パートタイム' || 
+    } else if (employee.employment_type === 'パートタイム' || 
         employee.employment_type === 'アルバイト' || 
         employee.employment_type === '契約社員' || 
         employee.employment_type === 'インターン・研修生') {
@@ -2243,22 +2346,48 @@ export class EmployeeManagementComponent implements OnInit {
           result.isEligible = true;
         } else {
           result.reason = '非正規労働者（51人以上）で全条件を満たしていないため適用外';
+          result.status = 'out';
           if (weeklyHours < 20) result.requiredActions?.push('週20時間以上の勤務が必要');
           if (monthlyIncome < 88000) result.requiredActions?.push('月収8.8万円以上が必要');
           if (employmentDuration < (2/12)) result.requiredActions?.push('2ヶ月以上の雇用契約が必要');
           if (isStudent) result.requiredActions?.push('学生は適用外');
+          return result;
         }
-      }else {
+      } else {
         // 50人以下：週30時間以上のみ適用
         if (weeklyHours >= 30) {
           result.isEligible = true;
         } else {
           result.reason = '週30時間未満のため適用外';
+          result.status = 'out';
           result.requiredActions?.push('週30時間以上の勤務が必要');
+          return result;
         }
       }
     }
 
+    // 適用内の場合のみ、免除判定を行う
+    if (result.isEligible) {
+      // 産休中は免除
+      if (this.isInMaternityLeavePeriod(employee)) {
+        return {
+          isEligible: false,
+          reason: '産休中のため免除',
+          requiredActions: ['届け出を作成してください。'],
+          status: 'exempt'
+        };
+      }
+
+      // 育休中で月末が含まれる月、または14日以上育休を取得している月は免除
+      if (this.isLastDayOfMonthInChildcareLeavePeriod(employee) || this.isChildcareLeaveMoreThan14Days(employee)) {
+        return {
+          isEligible: false,
+          reason: '育休中のため免除',
+          requiredActions: ['届け出を作成してください。'],
+          status: 'exempt'
+        };
+      }
+    }
 
     // 海外赴任中の注意事項
     if (employee.status === '海外赴任') {
@@ -2287,21 +2416,20 @@ export class EmployeeManagementComponent implements OnInit {
         reason: '入社前のため適用外'
       };
     }
+
     // 派遣社員は派遣元で管理するため、適用外
     if (employee.employment_type === '派遣社員') {
       return {
         isEligible: false,
         reason: '派遣社員は派遣元で管理するため、管理対象外です。',
-        
       };
     }
 
-    // 退職者は適用外
-    if (employee.status === '退職') {
+    // 退職者の判定
+    if (this.isRetiredEmployee(employee)) {
       return {
         isEligible: false,
-        reason: '退職者は適用外です。',
-        requiredActions: ['退職者は適用外です。']
+        reason: '退職者のため適用外です。',
       };
     }
 
@@ -2321,9 +2449,27 @@ export class EmployeeManagementComponent implements OnInit {
     // 健康保険の適用チェック
     const healthInsuranceEligibility = this.checkHealthInsuranceEligibility(employee);
     if (!healthInsuranceEligibility.isEligible) {
+      if (healthInsuranceEligibility.status === 'exempt') {
+        return {
+          isEligible: false,
+          reason: '健康保険が免除のため介護保険も免除',
+          requiredActions: healthInsuranceEligibility.requiredActions,
+          status: 'exempt'
+        };
+      }
       result.reason = '健康保険の適用対象外のため適用外';
       result.requiredActions = healthInsuranceEligibility.requiredActions;
       return result;
+    }
+
+    // 健康保険が免除の場合は介護保険も免除
+    if (healthInsuranceEligibility.status === 'exempt') {
+      return {
+        isEligible: false,
+        reason: '健康保険が免除のため介護保険も免除',
+        requiredActions: healthInsuranceEligibility.requiredActions,
+        status: 'exempt'
+      };
     }
 
     result.isEligible = true;
@@ -2337,6 +2483,24 @@ export class EmployeeManagementComponent implements OnInit {
       return {
         isEligible: false,
         reason: '副業先のため適用外',
+        status: 'out'
+      };
+    }
+
+    // 退職者は適用外
+    if (this.isRetiredEmployee(employee)) {
+      return {
+        isEligible: false,
+        reason: '退職のため適用外',
+        status: 'out'
+      };
+    }
+
+    if (employee.employment_type === '派遣社員') {
+      return {
+        isEligible: false,
+        reason: '派遣社員は派遣元で管理するため、管理対象外です。',
+        status: 'out'
       };
     }
 
@@ -2347,23 +2511,8 @@ export class EmployeeManagementComponent implements OnInit {
         (empStartDate.getFullYear() === targetDate.getFullYear() && empStartDate.getMonth() > targetDate.getMonth()))) {
       return {
         isEligible: false,
-        reason: '入社前のため適用外'
-      };
-    }
-    // 派遣社員は派遣元で管理するため、適用外
-    if (employee.employment_type === '派遣社員') {
-      return {
-        isEligible: false,
-        reason: '派遣社員は派遣元で管理するため、管理対象外です。',
-      };
-    }
-
-    // 退職者は適用外
-    if (employee.status === '退職') {
-      return {
-        isEligible: false,
-        reason: '退職者は管理対象外です。',
-        requiredActions: ['退職者は管理対象外です。']
+        reason: '入社前のため適用外',
+        status: 'out'
       };
     }
 
@@ -2373,31 +2522,18 @@ export class EmployeeManagementComponent implements OnInit {
       requiredActions: []
     };
 
-    // 産休・育休中は免除
-    if (employee.status === '産休中' || employee.status === '育休中') {
-      return {
-        isEligible: false,
-        reason: '産休・育休中のため免除',
-        requiredActions: ['届け出を作成してください。'],
-        status: 'exempt'
-      };
-    }
-
     // 70歳以上は適用外
     const age = this.calculateAge(employee.date_of_birth);
     if (age >= 70) {
       result.reason = '70歳以上のため適用外';
+      result.status = 'out';
       return result;
     }
 
     // 正社員は常に適用
     if (employee.employment_type === '正社員') {
       result.isEligible = true;
-      return result;
-    }
-
-    // パート・アルバイトの場合
-    if (
+    } else if (
       employee.employment_type === 'パートタイム' ||
       employee.employment_type === 'アルバイト' ||
       employee.employment_type === '契約社員' ||
@@ -2411,35 +2547,60 @@ export class EmployeeManagementComponent implements OnInit {
       if (weeklyHours >= 30 && !isStudent) {
         result.isEligible = true;
       } else if (weeklyHours >= 30 && isStudent) {
-        result.isEligible = false;
         result.reason = '週30時間以上だが昼間学生のため適用外';
+        result.status = 'out';
+        return result;
       } else if (this.isLargeCompany()) {
         // 51人以上：従来通り
         if (weeklyHours >= 20 && monthlyIncome >= 88000 && employmentDuration >= (2/12) && !isStudent) {
           result.isEligible = true;
-          result.reason = '非正規労働者（51人以上）で全条件を満たしているため適用';
         } else {
           result.reason = '非正規労働者（51人以上）で全条件を満たしていないため適用外';
+          result.status = 'out';
           if (weeklyHours < 20) result.requiredActions?.push('週20時間以上の勤務が必要');
           if (monthlyIncome < 88000) result.requiredActions?.push('月収8.8万円以上が必要');
           if (employmentDuration < (2/12)) result.requiredActions?.push('2ヶ月以上の雇用契約が必要');
           if (isStudent) result.requiredActions?.push('学生は適用外');
+          return result;
         }
       } else {
         // 50人以下：週30時間以上かつ昼間学生でない場合のみ適用
         if (weeklyHours >= 30 && !isStudent) {
           result.isEligible = true;
         } else if (weeklyHours >= 30 && isStudent) {
-          result.isEligible = false;
           result.reason = '週30時間以上だが昼間学生のため適用外';
+          result.status = 'out';
           result.requiredActions?.push('昼間学生は適用外');
+          return result;
         } else {
           result.reason = '週30時間未満のため適用外';
+          result.status = 'out';
           result.requiredActions?.push('週30時間以上の勤務が必要');
+          return result;
         }
       }
-      if (result.requiredActions && result.requiredActions.length === 0) {
-        result.requiredActions.push('非正規労働者です');
+    }
+
+    // 適用内の場合のみ、免除判定を行う
+    if (result.isEligible) {
+      // 産休中は免除
+      if (this.isInMaternityLeavePeriod(employee)) {
+        return {
+          isEligible: false,
+          reason: '産休中のため免除',
+          requiredActions: ['届け出を作成してください。'],
+          status: 'exempt'
+        };
+      }
+
+      // 育休中は免除
+      if (this.isLastDayOfMonthInChildcareLeavePeriod(employee) || this.isChildcareLeaveMoreThan14Days(employee)) {
+        return {
+          isEligible: false,
+          reason: '育休中のため免除',
+          requiredActions: ['届け出を作成してください。'],
+          status: 'exempt'
+        };
       }
     }
 
@@ -2511,16 +2672,28 @@ export class EmployeeManagementComponent implements OnInit {
     // 入社前のため適用外の場合は必ず 'out'
     employee.healthInsuranceStatus = (healthInsurance.reason === '入社前のため適用外') ? 'out'
       : (healthInsurance.status === 'exempt' ? 'exempt' : (healthInsurance.isEligible ? 'in' : 'out'));
+    
+    // 介護保険の判定：適用外を優先
     employee.nursingInsuranceStatus = (nursingInsurance.reason === '入社前のため適用外') ? 'out'
-      : (nursingInsurance.status === 'exempt' ? 'exempt' : (nursingInsurance.isEligible ? 'in' : 'out'));
+      : (nursingInsurance.status === 'exempt' ? 'exempt' : (nursingInsurance.isEligible === false ? 'out' : (nursingInsurance.isEligible ? 'in' : 'out')));
+    
     employee.pensionInsuranceStatus = (pensionInsurance.reason === '入社前のため適用外') ? 'out'
       : (pensionInsurance.status === 'exempt' ? 'exempt' : (pensionInsurance.isEligible ? 'in' : 'out'));
 
     employee.healthInsuranceReason = healthInsurance.reason;
     employee.healthInsuranceRequiredActions = healthInsurance.requiredActions;
 
-    employee.nursingInsuranceReason = nursingInsurance.reason;
-    employee.nursingInsuranceRequiredActions = nursingInsurance.requiredActions;
+    // 介護保険の理由とアクション：適用外を優先
+    if (nursingInsurance.status === 'exempt') {
+      employee.nursingInsuranceReason = nursingInsurance.reason;
+      employee.nursingInsuranceRequiredActions = nursingInsurance.requiredActions;
+    } else if (nursingInsurance.isEligible === false) {
+      employee.nursingInsuranceReason = nursingInsurance.reason;
+      employee.nursingInsuranceRequiredActions = nursingInsurance.requiredActions;
+    } else {
+      employee.nursingInsuranceReason = nursingInsurance.reason;
+      employee.nursingInsuranceRequiredActions = nursingInsurance.requiredActions;
+    }
 
     employee.pensionInsuranceReason = pensionInsurance.reason;
     employee.pensionInsuranceRequiredActions = pensionInsurance.requiredActions;
