@@ -399,12 +399,15 @@ export class InsurancePremiumCalculationComponent implements OnInit {
             this.selectedPrefectureId = departmentData['prefecture_id'] || '';
             console.log('設定された都道府県ID:', this.selectedPrefectureId);
 
-            // 等級情報を取得
-            if (this.selectedGrade && this.selectedPrefectureId && this.selectedYear) {
-              const gradeDoc = await getDoc(doc(this.firestore, 'prefectures', this.selectedPrefectureId, 'insurance_premiums', this.selectedYear, 'grades', this.selectedGrade));
+            // 等級情報を再取得（3月のみ次年度を参照）
+            let usedYear = this.selectedYear;
+            if (this.selectedMonth === '03') {
+              usedYear = String(Number(this.selectedYear) + 1);
+            }
+            if (this.selectedGrade) {
+              const gradeDoc = await getDoc(doc(this.firestore, 'prefectures', this.selectedPrefectureId, 'insurance_premiums', usedYear, 'grades', this.selectedGrade));
               if (gradeDoc.exists()) {
                 this.selectedGradeInfo = gradeDoc.data();
-                console.log('取得した等級情報:', this.selectedGradeInfo);
               }
             }
           }
@@ -433,10 +436,11 @@ export class InsurancePremiumCalculationComponent implements OnInit {
   getDocIdFromYearAndMonth(selectedYear: string, selectedMonth: string): string {
     const monthNum = parseInt(selectedMonth, 10);
     let actualYear = parseInt(selectedYear, 10);
+    // 1月から3月の場合は年度を1年進める
     if (monthNum >= 1 && monthNum <= 3) {
       actualYear += 1;
     }
-    return `${actualYear}-${selectedMonth}`;
+    return `${actualYear}${selectedMonth}`;
   }
 
   // 判定ロジックを共通化
@@ -445,7 +449,13 @@ export class InsurancePremiumCalculationComponent implements OnInit {
     let nursingApplicable = false;
     let pensionApplicable = false;
     if (this.selectedEmployeeId) {
-      const docId = this.getDocIdFromYearAndMonth(selectedYear, selectedMonth);
+      // 1月から3月の場合は次年度のドキュメントを参照
+      const monthNum = parseInt(selectedMonth, 10);
+      let actualYear = parseInt(selectedYear, 10);
+      if (monthNum >= 1 && monthNum <= 3) {
+        actualYear += 1;
+      }
+      const docId = `${actualYear}-${selectedMonth}`;
       const judgementRef = doc(this.firestore, 'employees', this.selectedEmployeeId, 'insurance_judgements', docId);
       const judgementSnap = await getDoc(judgementRef);
       if (judgementSnap.exists()) {
@@ -496,6 +506,18 @@ export class InsurancePremiumCalculationComponent implements OnInit {
       if (!this.selectedGrade || !this.selectedGradeInfo) {
         alert('従業員の等級情報が取得できません');
         return;
+      }
+
+      // 等級情報を再取得（3月のみ次年度を参照）
+      let usedYear = this.selectedYear;
+      if (this.selectedMonth === '03') {
+        usedYear = String(Number(this.selectedYear) + 1);
+      }
+      if (this.selectedGrade) {
+        const gradeDoc = await getDoc(doc(this.firestore, 'prefectures', this.selectedPrefectureId, 'insurance_premiums', usedYear, 'grades', this.selectedGrade));
+        if (gradeDoc.exists()) {
+          this.selectedGradeInfo = gradeDoc.data();
+        }
       }
 
       // --- ここから判定取得 ---
@@ -1302,5 +1324,11 @@ export class InsurancePremiumCalculationComponent implements OnInit {
       console.error('Error saving bonus calculation result:', error);
       alert('保存中にエラーが発生しました');
     }
+  }
+
+  get displayYear(): string {
+    const monthNum = parseInt(this.selectedMonth, 10);
+    const yearNum = parseInt(this.selectedYear, 10);
+    return (monthNum >= 1 && monthNum <= 3) ? (yearNum + 1).toString() : this.selectedYear;
   }
 }

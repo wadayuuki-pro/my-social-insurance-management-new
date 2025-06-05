@@ -2,7 +2,6 @@ import { Routes } from '@angular/router';
 import { LoginComponent } from './login/login.component';
 import { DashboardComponent } from './dashboard/dashboard.component';
 import { EmployeeManagementComponent } from './employee-management/employee-management.component';
-import { InsuranceProceduresComponent } from './insurance-procedures/insurance-procedures.component';
 import { ApplicationApprovalComponent } from './application-approval/application-approval.component';
 import { PayrollManagementComponent } from './payroll-management/payroll-management.component';
 import { InsurancePremiumCalculationComponent } from './insurance-premium-calculation/insurance-premium-calculation.component';
@@ -20,7 +19,6 @@ export const routes: Routes = [
     path: 'employee-management',
     loadComponent: () => import('./employee-management/employee-management.component').then(m => m.EmployeeManagementComponent)
   },
-  { path: 'insurance-procedures', component: InsuranceProceduresComponent },
   { path: 'application-approval', component: ApplicationApprovalComponent },
   {
     path: 'payroll-management',

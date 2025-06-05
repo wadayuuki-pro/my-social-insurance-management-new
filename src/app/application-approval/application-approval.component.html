@@ -281,6 +281,7 @@
             <th>ステータス</th>
             <th>承認ルート</th>
             <th>進捗</th>
+            <th>内容確認</th>
           </tr>
         </thead>
         <tbody>
@@ -305,6 +306,9 @@
               <span *ngIf="app.status === '却下'">却下</span>
               <span *ngIf="app.status === '申請中'">{{ app.currentStep }}/{{ getApprovalRouteSteps(app.approvalRouteId).length || '-' }}</span>
             </td>
+            <td>
+              <button class="approval-btn comment" (click)="openApprovalDetail(app)">内容確認</button>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -328,13 +332,27 @@
     <div style="margin-bottom:0.7em;"><b>申請内容詳細：</b><br>{{ selectedApprovalDetail.description }}</div>
     <div *ngIf="selectedApprovalDetail.attachments && selectedApprovalDetail.attachments.length > 0" style="margin-bottom:0.7em;">
       <b>添付ファイル：</b>
-      <ul style="padding-left:1.2em;">
-        <li *ngFor="let url of selectedApprovalDetail.attachments">
-          <a [href]="url" target="_blank">{{ url }}</a>
+      <ul class="attachment-gallery">
+        <li *ngFor="let url of selectedApprovalDetail.attachments" class="attachment-item">
+          <a [href]="url" target="_blank">
+            <ng-container *ngIf="isImageFile(url); else fileIcon">
+              <img [src]="url" alt="添付画像" class="attachment-thumb" />
+              <div class="attachment-label">写真</div>
+            </ng-container>
+            <ng-template #fileIcon>
+              <div class="attachment-fileicon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                  <path d="M17 7V17C17 19.2091 15.2091 21 13 21C10.7909 21 9 19.2091 9 17V7C9 5.89543 9.89543 5 11 5C12.1046 5 13 5.89543 13 7V17" stroke="#1976d2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div class="attachment-label">ファイル</div>
+              <div class="attachment-filename">{{ getFileName(url) }}</div>
+            </ng-template>
+          </a>
         </li>
       </ul>
     </div>
-    <div style="display:flex; gap:1em; margin-top:1.5em;">
+    <div style="display:flex; gap:1em; margin-top:1.5em;" *ngIf="selectedTab === 'approval'">
       <button class="approval-btn approve" (click)="approveApplication(selectedApprovalDetail)">承認</button>
       <button class="approval-btn reject">却下</button>
     </div>

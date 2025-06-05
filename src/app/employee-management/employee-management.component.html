@@ -382,10 +382,25 @@
                   <input [formControlName]="field" type="text" [placeholder]="employeeFieldPlaceholders[field]" (ngModelChange)="onNewEmployeePostalCodeChange($event)" maxlength="8" />
                 </ng-container>
                 <ng-container *ngSwitchCase="'is_dependent'">
-                  <div style="display:flex;align-items:center;gap:1.5em;">
-                    
-                    <label><input type="radio" [formControlName]="field" [value]="true" /> はい</label>
-                    <label><input type="radio" [formControlName]="field" [value]="false" /> いいえ</label>
+                  <div class="dependent-field-container">
+                    <div class="radio-group">
+                      <label>
+                        <input type="radio" [formControlName]="field" [value]="true"> はい
+                      </label>
+                      <label>
+                        <input type="radio" [formControlName]="field" [value]="false"> いいえ
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      class="info-button attention"
+                      (click)="showDependentInfo()"
+                      title="扶養状態の注意事項を表示"
+                      aria-label="扶養状態の注意事項"
+                    >
+                      <span class="material-icons">error_outline</span>
+                      注意事項
+                    </button>
                   </div>
                 </ng-container>
                 <ng-container *ngSwitchCase="'remarks'">
@@ -603,10 +618,25 @@
                     <input [formControlName]="field" type="text" [placeholder]="employeeFieldPlaceholders[field]" (ngModelChange)="onDetailPostalCodeChange($event)" maxlength="8" />
                   </ng-container>
                   <ng-container *ngSwitchCase="'is_dependent'">
-                    <div style="display:flex;align-items:center;gap:1.5em;">
-                      
-                      <label><input type="radio" [formControlName]="field" [value]="true" /> はい</label>
-                      <label><input type="radio" [formControlName]="field" [value]="false" /> いいえ</label>
+                    <div class="dependent-field-container">
+                      <div class="radio-group">
+                        <label>
+                          <input type="radio" [formControlName]="field" [value]="true"> はい
+                        </label>
+                        <label>
+                          <input type="radio" [formControlName]="field" [value]="false"> いいえ
+                        </label>
+                      </div>
+                      <button
+                        type="button"
+                        class="info-button attention"
+                        (click)="showDependentInfo()"
+                        title="扶養状態の注意事項を表示"
+                        aria-label="扶養状態の注意事項"
+                      >
+                        <span class="material-icons">error_outline</span>
+                        注意事項
+                      </button>
                     </div>
                   </ng-container>
                   <ng-container *ngSwitchCase="'remarks'">
@@ -1032,8 +1062,35 @@
       </div>
       <div *ngIf="insuranceOfficeEmployees.length === 0" style="color:#888; margin-top:2em;">該当する従業員がいません</div>
       <div class="judgement-info" style="margin-top:2em;">
-        <h3>判定について</h3>
-        <p>上記の判定については従業員情報から判定を行っています。実際に保険に加入しているかどうかで判断しておりませんので、上記の情報を元にご自身でご判断ください。</p>
+        <h3>判定について（主な判定基準）</h3>
+        <ul style="margin-left:1.2em;">
+          <li>
+            <b>短時間労働者（週20時間未満など）は原則として社会保険の適用外です。</b><br>
+            ただし、特定適用事業所（従業員51人以上など）では、週20時間以上かつ月収8.8万円以上などの条件を満たすと適用対象となります。
+          </li>
+          <li>
+            <b>2か所以上の会社で働いている場合、主たる勤務先でのみ社会保険に加入します。</b><br>
+            副業先では原則として社会保険の加入対象外です。
+          </li>
+          <li>
+            <b>学生は原則として社会保険の適用外です。</b><br>
+            ただし、夜間・通信・定時制の学生（昼間学生以外）は適用対象となる場合があります。
+          </li>
+          <li>
+            <b>産休・育休中は、一定の条件を満たすと社会保険料（健康保険・厚生年金保険）が免除されます。</b><br>
+            <ul style="margin: 0.3em 0 0.3em 1.2em; font-size: 0.97em;">
+              <li>産前産後休業期間中（出産予定日以前42日～出産後56日）は、申請により保険料が免除されます。</li>
+              <li>育児休業期間中（原則1歳まで、一定条件で最長2歳まで）は、申請により保険料が免除されます。</li>
+              <li>免除期間中も被保険者資格は継続し、将来の年金額にも影響しません。</li>
+              <li>免除を受けるには、事業主を通じて「産前産後休業取得者申出書」「育児休業取得者申出書」等の提出が必要です。</li>
+              
+            </ul>
+          </li>
+          <li>
+            <b>実際の雇用契約や勤務実態に基づきます。</b><br>
+            システム上の判定結果と実際の加入義務が異なる場合があるため、最終的な判断はご自身でご確認ください。
+          </li>
+        </ul>
       </div>
     </div>
   </div>
@@ -1054,6 +1111,25 @@
     </div>
     <div style="margin-top:1.5em; text-align:right;">
       <button type="button" (click)="closeActionsModal()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- 扶養状態の注意事項モーダル -->
+<div class="info-modal" *ngIf="showDependentInfoModal">
+  <div class="info-modal-content">
+    <div class="modal-header">
+      <h3>扶養状態について</h3>
+      <button type="button" class="close-button" (click)="closeDependentInfo()">×</button>
+    </div>
+    <div class="info-content">
+      <p>扶養状態の設定に関する重要な注意事項：</p>
+      <ul>
+        <li>扶養されている場合、社会保険料の支払いが免除されます。</li>
+        <li>年間収入130万円未満（60歳以上・障害者は180万円未満）の場合に扶養対象となります。</li>
+        <li>扶養状態の変更は、社会保険料の計算に影響するため、慎重に設定してください。</li>
+        <li>2024年10月1日から社会保険の適用範囲が拡大しています。ご注意ください。</li>
+      </ul>
     </div>
   </div>
 </div>

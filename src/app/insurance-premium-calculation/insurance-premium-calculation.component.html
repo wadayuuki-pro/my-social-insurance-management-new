@@ -119,7 +119,7 @@
       <div class="section" *ngIf="(calculationResult.total > 0 && !isBonusCalculation) || (bonusCalculationResult.total > 0 && isBonusCalculation)">
         <!-- 計算根拠の表示を追加 -->
         <div class="calculation-summary" style="margin-bottom: 1rem; color: #1976d2; font-weight: 500;">
-          <div>対象年月：{{ selectedYear }}年{{ selectedMonth }}月</div>
+          <div>対象年月：{{ displayYear }}年{{ selectedMonth }}月</div>
           <div>等級：{{ selectedGrade !== null ? selectedGrade : '-' }}</div>
           <div>標準報酬月額：{{ selectedGradeInfo?.standardSalary | number }}円</div>
           <div>年齢：{{ selectedEmployeeAge !== null ? selectedEmployeeAge : '-' }}歳</div>

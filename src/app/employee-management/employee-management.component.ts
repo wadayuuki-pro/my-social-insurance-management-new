@@ -2955,5 +2955,15 @@ export class EmployeeManagementComponent implements OnInit {
 
   departmentSearchOptions: string[] = [];
   departmentSearchOptionsForEmployee: string[] = [];
+
+  showDependentInfoModal = false;
+
+  showDependentInfo() {
+    this.showDependentInfoModal = true;
+  }
+
+  closeDependentInfo() {
+    this.showDependentInfoModal = false;
+  }
 }
 
