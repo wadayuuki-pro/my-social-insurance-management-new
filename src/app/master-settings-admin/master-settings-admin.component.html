@@ -184,12 +184,12 @@
                 <th style="min-width: 120px;">ユーザー</th>
                 <th style="min-width: 140px; white-space: nowrap;">操作種別</th>
                 <th style="min-width: 200px;">操作内容</th>
-                <th style="min-width: 150px;">IPアドレス</th>
+                <th style="min-width: 150px;">変更したユーザー</th>
                 <th style="min-width: 100px;">ステータス</th>
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let log of filteredOperationLogs">
+              <tr *ngFor="let log of pagedOperationLogs">
                 <td>{{ log.timestamp | date:'yyyy/MM/dd HH:mm' }}</td>
                 <td>{{ log.user_name }}</td>
                 <td>
@@ -198,8 +198,8 @@
                     {{ getOperationTypeLabel(log.operation_type) }}
                   </span>
                 </td>
-                <td>{{ log.operation_detail }}</td>
-                <td>{{ log.ip_address }}</td>
+                <td>{{ formatOperationDetail(log.operation_detail) }}</td>
+                <td>{{ getTargetUserName(log) }}</td>
                 <td>
                   <span [style]="getStatusStyle(log.status)"
                         style="padding: 0.2em 0.8em; border-radius: 1em; font-size: 0.9em;">
@@ -207,7 +207,7 @@
                   </span>
                 </td>
               </tr>
-              <tr *ngIf="filteredOperationLogs.length === 0">
+              <tr *ngIf="pagedOperationLogs.length === 0">
                 <td colspan="6" style="text-align: center; padding: 1em;">
                   検索条件に一致するログが見つかりませんでした。
                 </td>
@@ -218,11 +218,15 @@
 
         <!-- ページネーション -->
         <div style="display: flex; justify-content: center; margin-top: 1.5em; gap: 0.5em;">
-          <button class="btn" style="background: #f5f5f5; color: #333; padding: 0.5em 1em; border-radius: 4px;">前へ</button>
-          <button class="btn" style="background: #1976d2; color: white; padding: 0.5em 1em; border-radius: 4px;">1</button>
-          <button class="btn" style="background: #f5f5f5; color: #333; padding: 0.5em 1em; border-radius: 4px;">2</button>
-          <button class="btn" style="background: #f5f5f5; color: #333; padding: 0.5em 1em; border-radius: 4px;">3</button>
-          <button class="btn" style="background: #f5f5f5; color: #333; padding: 0.5em 1em; border-radius: 4px;">次へ</button>
+          <button class="btn" [disabled]="currentPage === 1" (click)="goToPrevPage()">前へ</button>
+          <button
+            class="btn"
+            *ngFor="let page of [].constructor(totalPages); let i = index"
+            [ngClass]="{'active': currentPage === (i+1)}"
+            (click)="goToPage(i+1)">
+            {{ i+1 }}
+          </button>
+          <button class="btn" [disabled]="currentPage === totalPages" (click)="goToNextPage()">次へ</button>
         </div>
       </div>
     </ng-container>

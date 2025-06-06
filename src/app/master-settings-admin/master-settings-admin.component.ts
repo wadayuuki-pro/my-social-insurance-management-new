@@ -88,6 +88,10 @@ export class MasterSettingsAdminComponent {
   selectedOperationType: string = '';
   selectedDate: string = '';
 
+  // ページネーション用
+  pageSize = 10;
+  currentPage = 1;
+
   // 日本語ラベルマッピング
   fieldLabels: Record<string, string> = {
     company_name: '会社名',
@@ -339,6 +343,7 @@ export class MasterSettingsAdminComponent {
   searchOperationLogs() {
     if (!this.logSearchQuery && !this.selectedOperationType && !this.selectedDate) {
       this.filteredOperationLogs = [...this.operationLogs];
+      this.currentPage = 1;
       return;
     }
 
@@ -355,6 +360,7 @@ export class MasterSettingsAdminComponent {
 
       return matchesSearch && matchesType && matchesDate;
     });
+    this.currentPage = 1;
   }
 
   // 操作種別の日本語表示
@@ -384,5 +390,50 @@ export class MasterSettingsAdminComponent {
     return status === 'success' 
       ? 'background: #e8f5e9; color: #2e7d32;'
       : 'background: #ffebee; color: #c62828;';
+  }
+
+  // 操作ログのoperation_detailを日本語で分かりやすく表示する
+  formatOperationDetail(detail: string): string {
+    if (!detail) return '';
+    // auto_gradeを → 等級を
+    return detail.replace(/^auto_gradeを/, '等級を');
+  }
+
+  get totalPages(): number {
+    return Math.ceil(this.filteredOperationLogs.length / this.pageSize) || 1;
+  }
+
+  get pagedOperationLogs() {
+    const start = (this.currentPage - 1) * this.pageSize;
+    return this.filteredOperationLogs.slice(start, start + this.pageSize);
+  }
+
+  goToPage(page: number) {
+    if (page < 1 || page > this.totalPages) return;
+    this.currentPage = page;
+  }
+
+  goToPrevPage() {
+    if (this.currentPage > 1) this.currentPage--;
+  }
+
+  goToNextPage() {
+    if (this.currentPage < this.totalPages) this.currentPage++;
+  }
+
+  // 変更したユーザー名を取得
+  getTargetUserName(log: any): string {
+    // 1. target_user_nameがあればそれを表示
+    if (log.target_user_name) return log.target_user_name;
+    // 2. employee_codeがあれば（従業員番号＋氏名）
+    if (log.employee_code && log.user_name) return `${log.employee_code} ${log.user_name}`;
+    // 3. operation_detailから「○○を△△に変更」などを抽出
+    if (log.operation_detail) {
+      // 例：「等級を「22（19）」→「19（16）」に変更」
+      const match = log.operation_detail.match(/→[「"]?(.+?)[」"]?に変更/);
+      if (match) return match[1];
+    }
+    // 4. なければ空文字
+    return '';
   }
 }

@@ -839,6 +839,26 @@ export class EmployeeManagementComponent implements OnInit {
       return;
     }
     try {
+      // 変更者（ログインユーザー）の従業員ID・氏名を取得
+      let updaterId = '';
+      let updaterName = '';
+      const user = this.auth.currentUser;
+      if (user && user.email && this.companyId) {
+        const employeesCol = collection(this.firestore, 'employees');
+        const q = query(
+          employeesCol,
+          where('company_id', '==', this.companyId),
+          where('email', '==', user.email)
+        );
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const docSnap = snapshot.docs[0];
+          updaterId = docSnap.id;
+          const data = docSnap.data();
+          updaterName = (data['last_name_kanji'] || '') + (data['first_name_kanji'] || '');
+        }
+      }
+
       const employeesCol = collection(this.firestore, 'employees');
       // employee_codeとcompany_idで一意に特定
       const q = query(employeesCol, where('employee_code', '==', this.selectedEmployee.employee_code), where('company_id', '==', this.selectedEmployee.company_id));
@@ -850,6 +870,9 @@ export class EmployeeManagementComponent implements OnInit {
         delete saveData.created_at;
         // updated_atは現在時刻で上書き
         saveData.updated_at = new Date();
+        // 変更者情報を追加
+        saveData.updated_by = updaterId;
+        saveData.updated_by_name = updaterName;
         // dependentsに値があればhas_dependentsをtrue、なければfalseに自動セット
         if (Array.isArray(saveData.dependents) && saveData.dependents.length > 0) {
           saveData.has_dependents = true;
@@ -929,7 +952,9 @@ export class EmployeeManagementComponent implements OnInit {
             operation_detail: `auto_gradeを「${beforeAutoGrade}」→「${afterAutoGrade}」に変更`,
             ip_address: ipAddress,
             status: 'success',
-            timestamp: new Date()
+            timestamp: new Date(),
+            updated_by: updaterId,
+            updated_by_name: updaterName
           });
         }
         // --- ここまで ---
