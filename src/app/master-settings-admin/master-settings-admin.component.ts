@@ -52,6 +52,7 @@ interface OperationLog {
   status: 'success' | 'failure';
   timestamp: Date;
   company_id: string;
+  updated_by?: string;
 }
 
 @Component({
@@ -111,6 +112,8 @@ export class MasterSettingsAdminComponent {
     manager_name: '管理者名',
     insurer_number: '保険者番号'
   };
+
+  updatedByNameMap: { [id: string]: string } = {};
 
   constructor(
     private authService: AuthService,
@@ -337,6 +340,29 @@ export class MasterSettingsAdminComponent {
       timestamp: (doc.data()['timestamp'] as any).toDate()
     } as OperationLog));
     this.filteredOperationLogs = [...this.operationLogs];
+
+    // --- ここから追加: updated_byの氏名を一括取得・キャッシュ ---
+    const updatedByIds = Array.from(new Set(this.operationLogs.map(log => log.updated_by).filter(id => typeof id === 'string')));
+    if (updatedByIds.length > 0) {
+      const employeesCol = collection(this.firestore, 'employees');
+      for (const id of updatedByIds) {
+        const idStr = String(id);
+        if (!this.updatedByNameMap[idStr]) {
+          try {
+            const empDoc = await getDoc(doc(this.firestore, 'employees', idStr));
+            if (empDoc.exists()) {
+              const data = empDoc.data();
+              this.updatedByNameMap[idStr] = (data['last_name_kanji'] || '') + (data['first_name_kanji'] || '');
+            } else {
+              this.updatedByNameMap[idStr] = '-';
+            }
+          } catch {
+            this.updatedByNameMap[idStr] = '-';
+          }
+        }
+      }
+    }
+    // --- ここまで追加 ---
   }
 
   // 操作ログの検索
@@ -435,5 +461,29 @@ export class MasterSettingsAdminComponent {
     }
     // 4. なければ空文字
     return '';
+  }
+
+  /**
+   * 操作ログの変更者名を取得（updated_byからemployeesコレクションを参照）
+   * 非同期でキャッシュし、なければ「-」を返す
+   */
+  async getUpdatedByName(log: any): Promise<string> {
+    if (!log.updated_by) return '-';
+    if (this.updatedByNameMap[log.updated_by]) return this.updatedByNameMap[log.updated_by];
+    try {
+      const empDoc = await getDoc(doc(this.firestore, 'employees', log.updated_by));
+      if (empDoc.exists()) {
+        const data = empDoc.data();
+        const name = (data['last_name_kanji'] || '') + (data['first_name_kanji'] || '');
+        this.updatedByNameMap[log.updated_by] = name;
+        return name;
+      } else {
+        this.updatedByNameMap[log.updated_by] = '-';
+        return '-';
+      }
+    } catch {
+      this.updatedByNameMap[log.updated_by] = '-';
+      return '-';
+    }
   }
 }

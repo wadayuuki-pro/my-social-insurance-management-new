@@ -170,9 +170,7 @@
 
         <!-- タブ切り替え -->
         <div class="log-tabs" style="margin-bottom: 1.5em;">
-          <button class="btn" style="background: #1976d2; color: white; padding: 0.7em 1.5em; border-radius: 6px; margin-right: 1em;">操作ログ</button>
-          <button class="btn" style="background: #f5f5f5; color: #333; padding: 0.7em 1.5em; border-radius: 6px; margin-right: 1em;">重要データ変更履歴</button>
-          <button class="btn" style="background: #f5f5f5; color: #333; padding: 0.7em 1.5em; border-radius: 6px;">アラート設定</button>
+          <button class="btn" style="background: #1976d2; color: white; padding: 0.7em 1.5em; border-radius: 6px;">操作ログ</button>
         </div>
 
         <!-- 操作ログテーブル -->
@@ -199,7 +197,14 @@
                   </span>
                 </td>
                 <td>{{ formatOperationDetail(log.operation_detail) }}</td>
-                <td>{{ getTargetUserName(log) }}</td>
+                <td>
+                  <ng-container *ngIf="log['updated_by']; else noUpdater">
+                    <span [attr.data-updater-id]="log['updated_by']">
+                      {{ updatedByNameMap[log['updated_by']] || '-' }}
+                    </span>
+                  </ng-container>
+                  <ng-template #noUpdater>-</ng-template>
+                </td>
                 <td>
                   <span [style]="getStatusStyle(log.status)"
                         style="padding: 0.2em 0.8em; border-radius: 1em; font-size: 0.9em;">

@@ -6,6 +6,7 @@ import { CommonModule } from '@angular/common';
 import { AuthService } from '../shared/services/auth.service';
 import { switchMap, map } from 'rxjs/operators';
 import { of, from } from 'rxjs';
+import { ActivatedRoute, Router } from '@angular/router';
 
 @Component({
   selector: 'app-dashboard',
@@ -24,7 +25,11 @@ export class DashboardComponent implements OnInit {
   // 追加: ログインユーザーの従業員情報
   public employeeInfo$;
 
-  constructor(private auth: Auth, private firestore: Firestore, public authService: AuthService) {
+  public errorMessage: string = '';
+
+  public isAdmin: boolean = false;
+
+  constructor(private auth: Auth, private firestore: Firestore, public authService: AuthService, private route: ActivatedRoute, private router: Router) {
     this.user$ = this.authService.user$;
     this.isAuthReady$ = this.authService.isAuthReady$;
     // 追加: employeeInfo$の初期化
@@ -35,17 +40,34 @@ export class DashboardComponent implements OnInit {
         const q = query(employeesCol, where('email', '==', user.email));
         return from(getDocs(q)).pipe(
           map(snapshot => {
-            if (snapshot.empty) return null;
+            if (snapshot.empty) {
+              this.isAdmin = false;
+              return null;
+            }
             const data = snapshot.docs[0].data();
+            this.isAdmin = data['role'] === 'admin';
             return {
               company_id: data['company_id'],
               employee_code: data['employee_code'],
-              name: `${data['last_name_kanji'] || ''}${data['first_name_kanji'] || ''}`
+              name: `${data['last_name_kanji'] || ''}${data['first_name_kanji'] || ''}`,
+              role: data['role']
             };
           })
         );
       })
     );
+    // クエリパラメータでエラー取得
+    this.route.queryParams.subscribe(params => {
+      if (params['error'] === 'forbidden') {
+        this.errorMessage = 'このページにアクセスする権限がありません。';
+        // 2秒後にクエリパラメータを消す
+        setTimeout(() => {
+          this.router.navigate([], { queryParams: {}, replaceUrl: true });
+        }, 2000);
+      } else {
+        this.errorMessage = '';
+      }
+    });
   }
 
   ngOnInit() {

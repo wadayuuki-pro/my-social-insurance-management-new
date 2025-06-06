@@ -1,13 +1,22 @@
 <div class="dashboard-container">
   <h1>社会保険管理システム</h1>
   <p class="subtitle">各種業務メニューを選択してください</p>
+  <div *ngIf="errorMessage" class="error-message" style="background: #ffebee; color: #c62828; padding: 1em; border-radius: 8px; margin-bottom: 1.5em; font-weight: bold; text-align: center;">
+    {{ errorMessage }}
+  </div>
+  <div *ngIf="errorMessage" class="dashboard-overlay" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.35); z-index: 1000;"></div>
   <div class="dashboard-grid">
     <a routerLink="/employee-management" class="dashboard-card">従業員管理</a>
     <a routerLink="/payroll-management" class="dashboard-card">給与情報管理</a>
     <a routerLink="/insurance-premium-calculation" class="dashboard-card">保険料管理</a>
     <a routerLink="/insurance-procedures" class="dashboard-card">保険手続き</a>
     <a routerLink="/application-approval" class="dashboard-card">申請・承認</a>
-    <a routerLink="/master-settings" class="dashboard-card">🛠️ マスタ設定・自社管理（管理者専用）</a>
+    <a routerLink="/master-settings" class="dashboard-card"
+       [ngClass]="{'dashboard-card-disabled': !isAdmin}"
+       [attr.tabindex]="isAdmin ? 0 : -1"
+       [style.pointer-events]="isAdmin ? 'auto' : 'none'">
+      🛠️ マスタ設定・自社管理（管理者専用）
+    </a>
     <a routerLink="/analysis-report" class="dashboard-card">分析・レポート</a>
     <a routerLink="/support-faq" class="dashboard-card">サポート・FAQ</a>
     <a routerLink="/vendor-page" class="dashboard-card vendor">ベンダー専用ページ</a>

@@ -136,15 +136,15 @@ export class InsurancePremiumService {
             // 一般保険料率（F9, G9）
             const ippan1 = getCell(5, 8);
             const ippan2 = getCell(6, 8);
-            ippan_rate = parseFloat(String(ippan1 ?? ippan2).replace(/[^\d.]/g, '')) || parseFloat(String(ippan2 ?? ippan1).replace(/[^\d.]/g, '')) || null;
+            ippan_rate = Number(parseFloat(String(ippan1 ?? ippan2).replace(/[^\d.]/g, '')).toFixed(4)) || Number(parseFloat(String(ippan2 ?? ippan1).replace(/[^\d.]/g, '')).toFixed(4)) || null;
             // 特定保険料率（H9, I9）
             const tokutei1 = getCell(7, 8);
             const tokutei2 = getCell(8, 8);
-            tokutei_rate = parseFloat(String(tokutei1 ?? tokutei2).replace(/[^\d.]/g, '')) || parseFloat(String(tokutei2 ?? tokutei1).replace(/[^\d.]/g, '')) || null;
+            tokutei_rate = Number(parseFloat(String(tokutei1 ?? tokutei2).replace(/[^\d.]/g, '')).toFixed(4)) || Number(parseFloat(String(tokutei2 ?? tokutei1).replace(/[^\d.]/g, '')).toFixed(4)) || null;
             // 厚生年金保険料率（J9, K9）
             const kousei1 = getCell(9, 8);
             const kousei2 = getCell(10, 8);
-            kousei_rate = parseFloat(String(kousei1 ?? kousei2).replace(/[^\d.]/g, '')) || parseFloat(String(kousei2 ?? kousei1).replace(/[^\d.]/g, '')) || null;
+            kousei_rate = Number(parseFloat(String(kousei1 ?? kousei2).replace(/[^\d.]/g, '')).toFixed(4)) || Number(parseFloat(String(kousei2 ?? kousei1).replace(/[^\d.]/g, '')).toFixed(4)) || null;
           } catch (e) {
             // 取得失敗時はnullのまま
           }
@@ -195,14 +195,17 @@ export class InsurancePremiumService {
             const gradeDoc = doc(yearCollection, gradeId);
             await setDoc(gradeDoc, premium);
           }
-          // 料率をprefecture_id直下に保存
-          const rateData: any = {};
-          if (ippan_rate !== null) rateData.ippan_rate = ippan_rate;
-          if (tokutei_rate !== null) rateData.tokutei_rate = tokutei_rate;
-          if (kousei_rate !== null) rateData.kousei_rate = kousei_rate;
-          if (Object.keys(rateData).length > 0) {
-            await setDoc(prefectureDoc, rateData, { merge: true });
-          }
+          // --- 新しいratesコレクションにも保存 ---
+          const ratesRef = doc(
+            this.firestore,
+            `prefectures/${prefectureId}/insurance_premiums/${year}/rates/current`
+          );
+          await setDoc(ratesRef, {
+            ippan_rate,
+            tokutei_rate,
+            kousei_rate,
+            updated_at: new Date()
+          });
 
           // 全国にもgradesサブコレクション（E列まで）を保存
           const zenkokuDoc = doc(prefectureCollection, '全国');

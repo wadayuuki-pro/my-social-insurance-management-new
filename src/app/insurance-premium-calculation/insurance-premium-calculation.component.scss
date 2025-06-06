@@ -107,7 +107,9 @@ h3 {
 
 .button-row {
   display: flex;
-  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  align-items: center;
   margin-top: 1rem;
 
   button {
@@ -124,16 +126,34 @@ h3 {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-
-    &:hover {
-      background: #1565c0;
-    }
-
-    mat-icon {
-      font-size: 1.2rem;
-      width: 1.2rem;
-      height: 1.2rem;
-    }
+    min-width: 120px;
+    height: 2.7em;
+  }
+  .bonus-btn {
+    background: #ff9800;
+    color: #fff;
+  }
+  .all-btn {
+    background: #388e3c;
+    color: #fff;
+  }
+  .rounding-btn {
+    background: #fff;
+    color: #1976d2;
+    border: 1.5px solid #1976d2;
+    font-size: 0.98em;
+    min-width: 110px;
+    padding: 0.5em 0.9em;
+    font-weight: 500;
+    height: 2.7em;
+  }
+  .rounding-btn:hover {
+    background: #e3f2fd;
+    color: #1256a3;
+  }
+  .save-btn {
+    background: #4caf50;
+    color: #fff;
   }
 }
 

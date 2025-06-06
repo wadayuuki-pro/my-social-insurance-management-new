@@ -10,6 +10,7 @@ import { VendorPageComponent } from './vendor-page/vendor-page.component';
 import { vendorGuard } from './vendor.guard';
 import { AnalysisReportComponent } from './analysis-report/analysis-report.component';
 import { SupportFaqComponent } from './support-faq/support-faq.component';
+import { adminGuard } from './admin.guard';
 
 export const routes: Routes = [
   { path: '', redirectTo: 'login', pathMatch: 'full' },
@@ -34,6 +35,7 @@ export const routes: Routes = [
   { path: 'vendor-page', component: VendorPageComponent, canActivate: [vendorGuard] },
   {
     path: 'master-settings',
-    loadComponent: () => import('./master-settings-admin/master-settings-admin.component').then(m => m.MasterSettingsAdminComponent)
+    loadComponent: () => import('./master-settings-admin/master-settings-admin.component').then(m => m.MasterSettingsAdminComponent),
+    canActivate: [adminGuard]
   }
 ];

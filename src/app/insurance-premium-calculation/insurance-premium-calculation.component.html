@@ -54,6 +54,8 @@
           </select>
         </div>
 
+        
+
         <!-- 選択中の都道府県ID表示 -->
         <div class="form-group">
           <ng-container *ngIf="selectedPrefectureId; else noDept">
@@ -81,7 +83,7 @@
         <div class="form-group" *ngIf="selectedEmployeeId">
           <label>賞与額</label>
           <div *ngIf="hasBonus" style="color: #1976d2; font-weight: 500;">
-            {{ bonusAmount | number }}円
+            {{ bonusAmount.toNumber() | number }}円
           </div>
           <div *ngIf="!hasBonus" style="color: #d32f2f; font-weight: 500;">
             賞与はありません
@@ -95,35 +97,52 @@
             <mat-icon>calculate</mat-icon>
             計算実行
           </button>
-          <button type="button" (click)="calculateBonusInsurance()" [disabled]="!selectedEmployeeId" style="margin-left: 1rem; background: #ff9800; color: white;">
+          <button type="button" (click)="calculateBonusInsurance()" [disabled]="!selectedEmployeeId" class="bonus-btn">
             <mat-icon>payments</mat-icon>
-            賞与計算実行
+            賞与計算
           </button>
-          <button type="button" (click)="toggleRoundingPattern()" style="margin-left: 1rem; background: #1976d2; color: white;">
+          <button type="button" (click)="onAllEmployeesCalculate()" [disabled]="!selectedDepartmentId" class="all-btn">
+            <mat-icon>group</mat-icon>
+            全従業員計算
+          </button>
+          <button type="button" (click)="onAllEmployeesBonusCalculate()" [disabled]="!selectedDepartmentId" class="all-btn">
+            <mat-icon>group</mat-icon>
+            全従業員賞与計算
+          </button>
+          <button type="button" (click)="toggleRoundingPattern()" class="rounding-btn">
             <mat-icon>swap_horiz</mat-icon>
-            四捨五入パターン切替：
-            <span *ngIf="roundingPattern === 'round'">0.5以下切り捨て・0.5超切り上げ</span>
-            <span *ngIf="roundingPattern === 'custom'">0.5未満切り捨て・0.5以上切り上げ</span>
+            <span *ngIf="roundingPattern === 'round'">四捨五入:給与から控除</span>
+            <span *ngIf="roundingPattern === 'custom'">四捨五入:現金払い</span>
           </button>
-          <button type="button" (click)="saveCalculationResult()" *ngIf="calculationResult.total > 0 && !isBonusCalculation" style="margin-left: 1rem; background: #4caf50; color: white;">
+          <button type="button" (click)="saveCalculationResult()" *ngIf="calculationResultTotalNumber > 0 && !isBonusCalculation" class="save-btn">
             <mat-icon>save</mat-icon>
             計算結果を保存
           </button>
-          <button type="button" (click)="saveBonusCalculationResult()" *ngIf="bonusCalculationResult.total > 0 && isBonusCalculation" style="margin-left: 1rem; background: #4caf50; color: white;">
+          <button type="button" (click)="saveBonusCalculationResult()" *ngIf="bonusCalculationResultTotalNumber > 0 && isBonusCalculation" class="save-btn">
             <mat-icon>save</mat-icon>
             賞与計算結果を保存
           </button>
+          <button type="button" (click)="saveAllEmployeesResults()" *ngIf="succeededEmployees.length > 0" [disabled]="isSavingAll" class="save-btn">
+            <mat-icon>save</mat-icon>
+            全員分保存
+          </button>
+          <button type="button" (click)="saveAllEmployeesBonusResults()" *ngIf="succeededBonusEmployees.length > 0" [disabled]="isSavingAllBonus" class="save-btn">
+            <mat-icon>save</mat-icon>
+            全員分賞与保存
+          </button>
+          <span *ngIf="saveAllMessage" style="margin-left: 1em; color: #1976d2;">{{ saveAllMessage }}</span>
+          <span *ngIf="saveAllBonusMessage" style="margin-left: 1em; color: #1976d2;">{{ saveAllBonusMessage }}</span>
         </div>
       </div>
 
-      <div class="section" *ngIf="(calculationResult.total > 0 && !isBonusCalculation) || (bonusCalculationResult.total > 0 && isBonusCalculation)">
+      <div class="section" *ngIf="(calculationResultTotalNumber > 0 && !isBonusCalculation) || (bonusCalculationResultTotalNumber > 0 && isBonusCalculation)">
         <!-- 計算根拠の表示を追加 -->
         <div class="calculation-summary" style="margin-bottom: 1rem; color: #1976d2; font-weight: 500;">
           <div>対象年月：{{ displayYear }}年{{ selectedMonth }}月</div>
           <div>等級：{{ selectedGrade !== null ? selectedGrade : '-' }}</div>
           <div>標準報酬月額：{{ selectedGradeInfo?.standardSalary | number }}円</div>
           <div>年齢：{{ selectedEmployeeAge !== null ? selectedEmployeeAge : '-' }}歳</div>
-          <div *ngIf="isBonusCalculation">賞与額：{{ bonusAmount | number }}円</div>
+          <div *ngIf="isBonusCalculation">賞与額：{{ bonusAmount.toNumber() | number }}円</div>
         </div>
         <div *ngIf="isBonusCalculation && isBonusLoading" style="color:#1976d2; font-weight:500; text-align:center; margin:2em 0;">計算中...</div>
         <div class="table-container" *ngIf="!isBonusCalculation || (isBonusCalculation && !isBonusLoading)">
@@ -139,14 +158,18 @@
                 <tr>
                   <td>健康保険料（全額）</td>
                   <td>
-                    <ng-container *ngIf="_lastInsuranceApplicable.ippan; else notApplicable">{{ calculationResult.ippanFull | number }}円</ng-container>
+                    <ng-container *ngIf="_lastInsuranceApplicable.ippan; else notApplicable">
+                      {{ getDisplayValue(calculationResult.ippanFull) | number }}円
+                    </ng-container>
                     <ng-template #notApplicable>-</ng-template>
                   </td>
                 </tr>
                 <tr>
                   <td>健康保険料（半額）</td>
                   <td>
-                    <ng-container *ngIf="_lastInsuranceApplicable.ippan; else notApplicable2">{{ calculationResult.ippanHalf | number:'1.0-0' }}円</ng-container>
+                    <ng-container *ngIf="_lastInsuranceApplicable.ippan; else notApplicable2">
+                      {{ getDisplayValue(calculationResult.ippanHalf) | number:'1.0-0' }}円
+                    </ng-container>
                     <ng-template #notApplicable2>-</ng-template>
                   </td>
                 </tr>
@@ -160,7 +183,9 @@
                 <tr>
                   <td>健康保険料2号（半額）</td>
                   <td>
-                    <ng-container *ngIf="_lastInsuranceApplicable.tokutei; else notApplicableTokutei2">{{ calculationResult.tokuteiHalf | number:'1.0-0' }}円</ng-container>
+                    <ng-container *ngIf="_lastInsuranceApplicable.tokutei; else notApplicableTokutei2">
+                      {{ getDisplayValue(calculationResult.tokuteiHalf) | number:'1.0-0' }}円
+                    </ng-container>
                     <ng-template #notApplicableTokutei2>-</ng-template>
                   </td>
                 </tr>
@@ -183,42 +208,54 @@
                 <tr>
                   <td>賞与健康保険料（全額）</td>
                   <td>
-                    <ng-container *ngIf="_lastInsuranceApplicable.ippan; else notApplicable5">{{ bonusCalculationResult.ippanFull | number }}円</ng-container>
+                    <ng-container *ngIf="_lastInsuranceApplicable.ippan; else notApplicable5">
+                      {{ getDisplayValue(bonusCalculationResult.ippanFull) | number }}円
+                    </ng-container>
                     <ng-template #notApplicable5>-</ng-template>
                   </td>
                 </tr>
                 <tr>
                   <td>賞与健康保険料（半額）</td>
                   <td>
-                    <ng-container *ngIf="_lastInsuranceApplicable.ippan; else notApplicable6">{{ bonusCalculationResult.ippanHalf | number }}円</ng-container>
+                    <ng-container *ngIf="_lastInsuranceApplicable.ippan; else notApplicable6">
+                      {{ getDisplayValue(bonusCalculationResult.ippanHalf) | number }}円
+                    </ng-container>
                     <ng-template #notApplicable6>-</ng-template>
                   </td>
                 </tr>
                 <tr>
                   <td>賞与健康保険料2号（全額）</td>
                   <td>
-                    <ng-container *ngIf="_lastInsuranceApplicable.tokutei; else notApplicableTokutei3">{{ bonusCalculationResult.tokuteiFull | number }}円</ng-container>
+                    <ng-container *ngIf="_lastInsuranceApplicable.tokutei; else notApplicableTokutei3">
+                      {{ getDisplayValue(bonusCalculationResult.tokuteiFull) | number }}円
+                    </ng-container>
                     <ng-template #notApplicableTokutei3>-</ng-template>
                   </td>
                 </tr>
                 <tr>
                   <td>賞与健康保険料2号（半額）</td>
                   <td>
-                    <ng-container *ngIf="_lastInsuranceApplicable.tokutei; else notApplicableTokutei4">{{ bonusCalculationResult.tokuteiHalf | number }}円</ng-container>
+                    <ng-container *ngIf="_lastInsuranceApplicable.tokutei; else notApplicableTokutei4">
+                      {{ getDisplayValue(bonusCalculationResult.tokuteiHalf) | number }}円
+                    </ng-container>
                     <ng-template #notApplicableTokutei4>-</ng-template>
                   </td>
                 </tr>
                 <tr>
                   <td>賞与厚生年金保険料（全額）</td>
                   <td>
-                    <ng-container *ngIf="_lastInsuranceApplicable.kousei; else notApplicable7">{{ bonusCalculationResult.kouseiFull | number }}円</ng-container>
+                    <ng-container *ngIf="_lastInsuranceApplicable.kousei; else notApplicable7">
+                      {{ getDisplayValue(bonusCalculationResult.kouseiFull) | number }}円
+                    </ng-container>
                     <ng-template #notApplicable7>-</ng-template>
                   </td>
                 </tr>
                 <tr>
                   <td>賞与厚生年金保険料（半額）</td>
                   <td>
-                    <ng-container *ngIf="_lastInsuranceApplicable.kousei; else notApplicable8">{{ bonusCalculationResult.kouseiHalf | number }}円</ng-container>
+                    <ng-container *ngIf="_lastInsuranceApplicable.kousei; else notApplicable8">
+                      {{ getDisplayValue(bonusCalculationResult.kouseiHalf) | number }}円
+                    </ng-container>
                     <ng-template #notApplicable8>-</ng-template>
                   </td>
                 </tr>
@@ -226,6 +263,78 @@
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div *ngIf="failedEmployees && failedEmployees.length > 0" style="margin: 1.5em 0; background: #ffebee; color: #c62828; border: 1.5px solid #ffcdd2; border-radius: 10px; padding: 1.2em 2em; max-width: 600px;">
+        <b>計算できなかった従業員：</b>
+        <ul style="margin: 0.5em 0 0 1.2em;">
+          <li *ngFor="let emp of failedEmployees">{{ emp.last_name_kanji }}{{ emp.first_name_kanji }} ({{ emp.employee_code }})</li>
+        </ul>
+      </div>
+
+      <div *ngIf="succeededEmployees && succeededEmployees.length > 0" style="margin: 1.5em 0; background: #e3f2fd; color: #1976d2; border: 1.5px solid #bbdefb; border-radius: 10px; padding: 1.2em 2em; max-width: 700px;">
+        <b>計算できた従業員：</b>
+        <table style="width:100%; margin-top:0.7em; background:#fff; border-radius:8px;">
+          <thead>
+            <tr style="background:#e3f2fd; color:#1976d2;">
+              <th style="padding:0.5em 1em;">氏名</th>
+              <th style="padding:0.5em 1em;">健康保険料（全額）</th>
+              <th style="padding:0.5em 1em;">健康保険料（半額）</th>
+              <th style="padding:0.5em 1em;">健康保険料2号（全額）</th>
+              <th style="padding:0.5em 1em;">健康保険料2号（半額）</th>
+              <th style="padding:0.5em 1em;">厚生年金保険料（全額）</th>
+              <th style="padding:0.5em 1em;">厚生年金保険料（半額）</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let emp of succeededEmployees">
+              <td style="padding:0.5em 1em;">{{ emp.name }}</td>
+              <td style="padding:0.5em 1em; text-align:right;">{{ emp.ippanApplicable ? (emp.ippanFull | number) + '円' : '-' }}</td>
+              <td style="padding:0.5em 1em; text-align:right;">{{ emp.ippanApplicable ? (emp.ippanHalf | number) + '円' : '-' }}</td>
+              <td style="padding:0.5em 1em; text-align:right;">{{ emp.tokuteiApplicable ? (emp.tokuteiFull | number) + '円' : '-' }}</td>
+              <td style="padding:0.5em 1em; text-align:right;">{{ emp.tokuteiApplicable ? (emp.tokuteiHalf | number) + '円' : '-' }}</td>
+              <td style="padding:0.5em 1em; text-align:right;">{{ emp.kouseiApplicable ? (emp.kouseiFull | number) + '円' : '-' }}</td>
+              <td style="padding:0.5em 1em; text-align:right;">{{ emp.kouseiApplicable ? (emp.kouseiHalf | number) + '円' : '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div *ngIf="failedBonusEmployees && failedBonusEmployees.length > 0" style="margin: 1.5em 0; background: #ffebee; color: #c62828; border: 1.5px solid #ffcdd2; border-radius: 10px; padding: 1.2em 2em; max-width: 600px;">
+        <b>賞与計算できなかった従業員：</b>
+        <ul style="margin: 0.5em 0 0 1.2em;">
+          <li *ngFor="let emp of failedBonusEmployees">{{ emp.last_name_kanji }}{{ emp.first_name_kanji }} ({{ emp.employee_code }})</li>
+        </ul>
+      </div>
+
+      <div *ngIf="succeededBonusEmployees && succeededBonusEmployees.length > 0" style="margin: 1.5em 0; background: #e3f2fd; color: #1976d2; border: 1.5px solid #bbdefb; border-radius: 10px; padding: 1.2em 2em; max-width: 900px;">
+        <b>賞与計算できた従業員：</b>
+        <table style="width:100%; margin-top:0.7em; background:#fff; border-radius:8px;">
+          <thead>
+            <tr style="background:#e3f2fd; color:#1976d2;">
+              <th style="padding:0.5em 1em;">氏名</th>
+              <th style="padding:0.5em 1em;">賞与額</th>
+              <th style="padding:0.5em 1em;">賞与健康保険料（全額）</th>
+              <th style="padding:0.5em 1em;">賞与健康保険料（半額）</th>
+              <th style="padding:0.5em 1em;">賞与健康保険料2号（全額）</th>
+              <th style="padding:0.5em 1em;">賞与健康保険料2号（半額）</th>
+              <th style="padding:0.5em 1em;">賞与厚生年金保険料（全額）</th>
+              <th style="padding:0.5em 1em;">賞与厚生年金保険料（半額）</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let emp of succeededBonusEmployees">
+              <td style="padding:0.5em 1em;">{{ emp.name }}</td>
+              <td style="padding:0.5em 1em; text-align:right;">{{ emp.bonusAmount | number }}円</td>
+              <td style="padding:0.5em 1em; text-align:right;">{{ emp.ippanApplicable ? (emp.ippanFull | number) + '円' : '-' }}</td>
+              <td style="padding:0.5em 1em; text-align:right;">{{ emp.ippanApplicable ? (emp.ippanHalf | number) + '円' : '-' }}</td>
+              <td style="padding:0.5em 1em; text-align:right;">{{ emp.tokuteiApplicable ? (emp.tokuteiFull | number) + '円' : '-' }}</td>
+              <td style="padding:0.5em 1em; text-align:right;">{{ emp.tokuteiApplicable ? (emp.tokuteiHalf | number) + '円' : '-' }}</td>
+              <td style="padding:0.5em 1em; text-align:right;">{{ emp.kouseiApplicable ? (emp.kouseiFull | number) + '円' : '-' }}</td>
+              <td style="padding:0.5em 1em; text-align:right;">{{ emp.kouseiApplicable ? (emp.kouseiHalf | number) + '円' : '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </ng-container>
 
@@ -241,13 +350,13 @@
         </div>
         <div class="form-group">
           <label for="yearSelect-ratio">対象年度</label>
-          <select id="yearSelect-ratio" [(ngModel)]="selectedYear" name="yearSelect-ratio">
+          <select id="yearSelect-ratio" [(ngModel)]="selectedYear" name="yearSelect-ratio" (change)="onRatioDateChange()">
             <option *ngFor="let y of yearOptions" [value]="y">{{ y }}年度</option>
           </select>
         </div>
         <div class="form-group">
           <label for="monthSelect-ratio">対象月</label>
-          <select id="monthSelect-ratio" [(ngModel)]="selectedMonth" name="monthSelect-ratio">
+          <select id="monthSelect-ratio" [(ngModel)]="selectedMonth" name="monthSelect-ratio" (change)="onRatioDateChange()">
             <option *ngFor="let m of monthOptions" [value]="m">{{ m }}月</option>
           </select>
         </div>
@@ -256,21 +365,21 @@
             <div class="burden-summary-cards" style="display: flex; gap: 1.5rem; justify-content: center;">
               <div style="background: #e3f2fd; color: #1976d2; border-radius: 1.2em; padding: 1.2em 2.2em; min-width: 200px; box-shadow: 0 2px 8px rgba(25, 118, 210, 0.08); text-align: center;">
                 <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 0.5em;">会社負担合計</div>
-                <div style="font-size: 2em; font-weight: bold;">{{ totalCompanyBurden | number }}
+                <div style="font-size: 2em; font-weight: bold;">{{ totalCompanyBurden.toNumber() | number }}
                   <span *ngIf="totalCompanyBurdenHasFraction" style="font-size: 0.7em; color: #888;">（{{ totalCompanyBurdenFloor | number }}）</span>
                   <span style="font-size: 0.7em;">円</span>
                 </div>
               </div>
               <div style="background: #fff3e0; color: #fb8c00; border-radius: 1.2em; padding: 1.2em 2.2em; min-width: 200px; box-shadow: 0 2px 8px rgba(251, 140, 0, 0.08); text-align: center;">
                 <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 0.5em;">従業員負担合計</div>
-                <div style="font-size: 2em; font-weight: bold;">{{ totalEmployeeBurden | number }}
+                <div style="font-size: 2em; font-weight: bold;">{{ totalEmployeeBurden.toNumber() | number }}
                   <span *ngIf="totalEmployeeBurdenHasFraction" style="font-size: 0.7em; color: #888;">（{{ totalEmployeeBurdenFloor | number }}）</span>
                   <span style="font-size: 0.7em;">円</span>
                 </div>
               </div>
               <div style="background: #e8f5e9; color: #388e3c; border-radius: 1.2em; padding: 1.2em 2.2em; min-width: 200px; box-shadow: 0 2px 8px rgba(56, 142, 60, 0.08); text-align: center;">
                 <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 0.5em;">総合計</div>
-                <div style="font-size: 2em; font-weight: bold;">{{ totalBurden | number }}
+                <div style="font-size: 2em; font-weight: bold;">{{ totalBurden.toNumber() | number }}
                   <span *ngIf="totalBurdenHasFraction" style="font-size: 0.7em; color: #888;">（{{ totalBurdenFloor | number }}）</span>
                   <span style="font-size: 0.7em;">円</span>
                 </div>
@@ -301,15 +410,15 @@
             <tbody>
               <tr *ngFor="let row of employeePremiumSummaries">
                 <td>{{ row.name }}</td>
-                <td>{{ row.ippanEmployee > 0 ? (row.ippanEmployee | number) : '' }}</td>
-                <td>{{ row.ippanCompany > 0 ? (row.ippanCompany | number) : '' }}</td>
-                <td>{{ row.tokuteiEmployee > 0 ? (row.tokuteiEmployee | number) : '' }}</td>
-                <td>{{ row.tokuteiCompany > 0 ? (row.tokuteiCompany | number) : '' }}</td>
-                <td>{{ row.kouseiEmployee > 0 ? (row.kouseiEmployee | number) : '' }}</td>
-                <td>{{ row.kouseiCompany > 0 ? (row.kouseiCompany | number) : '' }}</td>
-                <td>{{ row.totalEmployee | number }}</td>
-                <td>{{ row.totalCompany | number }}</td>
-                <td>{{ row.total | number }}</td>
+                <td>{{ row.ippanEmployee.gt(0) ? (row.ippanEmployee.toNumber() | number) : '' }}</td>
+                <td>{{ row.ippanCompany.gt(0) ? (row.ippanCompany.toNumber() | number) : '' }}</td>
+                <td>{{ row.tokuteiEmployee.gt(0) ? (row.tokuteiEmployee.toNumber() | number) : '' }}</td>
+                <td>{{ row.tokuteiCompany.gt(0) ? (row.tokuteiCompany.toNumber() | number) : '' }}</td>
+                <td>{{ row.kouseiEmployee.gt(0) ? (row.kouseiEmployee.toNumber() | number) : '' }}</td>
+                <td>{{ row.kouseiCompany.gt(0) ? (row.kouseiCompany.toNumber() | number) : '' }}</td>
+                <td>{{ row.totalEmployee.toNumber() | number }}</td>
+                <td>{{ row.totalCompany.toNumber() | number }}</td>
+                <td>{{ row.total.toNumber() | number }}</td>
               </tr>
             </tbody>
           </table>
@@ -374,6 +483,17 @@
         </div>
         <!-- ここまでインポート機能 -->
 
+        <!-- 柔らかい注意書き -->
+        <div style="border-radius: 10px; padding: 1.2em 1.5em; margin-bottom: 1.5em; max-width: 600px">
+          <div style="font-weight: bold; font-size: 1.1em; margin-bottom: 0.5em;">
+            インポート時の注意
+          </div>
+          <ul style="margin: 0 0 0 1.2em; padding: 0; font-size: 1em;">
+            <li>年度と<strong>都道府県</strong>を選択してください。</li>
+            <li>都道府県選択はファイルを正常に選択したときに表示されます。</li>
+          </ul>
+        </div>
+
         <div *ngIf="isLoadingMasterGrades" style="color:#1976d2; font-weight:bold;">データ取得中...</div>
         <div *ngIf="masterGrades">
           <div style="margin-bottom: 1em;">
@@ -381,6 +501,42 @@
             <button *ngIf="isEditMode" (click)="saveMasterGrades()" class="btn btn-success" style="margin-right: 0.5em;">保存</button>
             <button *ngIf="isEditMode" (click)="cancelEditMode()" class="btn btn-secondary">キャンセル</button>
           </div>
+
+          <!-- 料率編集フォーム -->
+          <div class="card mb-4" *ngIf="isEditMode">
+            <div class="card-header">
+              <h5 class="mb-0">料率設定</h5>
+            </div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-3">
+                  <div class="form-group">
+                    <label>健康保険料率</label>
+                    <input type="number" step="0.01" [(ngModel)]="editRates.ippan_rate" class="form-control">
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="form-group">
+                    <label>健康保険料率（2号）</label>
+                    <input type="number" step="0.01" [(ngModel)]="editRates.tokutei_rate" class="form-control">
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="form-group">
+                    <label>厚生年金保険料率</label>
+                    <input type="number" step="0.01" [(ngModel)]="editRates.kousei_rate" class="form-control">
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="form-group">
+                    <label>介護保険料率</label>
+                    <input type="number" step="0.01" [(ngModel)]="editRates.kaigo_rate" class="form-control">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="table-responsive">
             <table class="premium-table">
               <thead>
@@ -431,7 +587,7 @@
       <div class="section">
         <div class="form-group">
           <label for="historyYearSelect">年度</label>
-          <select id="historyYearSelect" [(ngModel)]="selectedHistoryYear" name="historyYearSelect">
+          <select id="historyYearSelect" [(ngModel)]="selectedHistoryYear" name="historyYearSelect" (change)="onHistorySelectionChange()">
             <option *ngFor="let y of yearOptions" [value]="y">{{ y }}年度</option>
           </select>
         </div>
@@ -462,11 +618,18 @@
               <div style="font-size: 1.5em; font-weight: bold;">{{ historyPrefectureRates.kousei_rate != null ? historyPrefectureRates.kousei_rate : '-' }}</div>
             </div>
           </div>
+          <div style="margin-top: 1.5em; display: flex; justify-content: center;">
+            <div style="background: #ffebee; color: #c62828; border: 1.5px solid #ffcdd2; border-radius: 10px; padding: 1.2em 2em; max-width: 600px; width: 100%; display: flex; align-items: flex-start; gap: 1em; box-shadow: 0 2px 8px rgba(198,40,40,0.08); font-size: 1.05em;">
+              <span style="font-size: 1.7em; margin-top: -0.1em;">⚠️</span>
+              <span>
+                <b>協会けんぽの保険料率は３月分（４月納付分）から適用されます。</b><br>
+                <span style="font-size: 0.98em;">（4月分の保険料から変わる、ということではありませんのでご注意ください）</span>
+              </span>
+            </div>
+          </div>
         </div>
         <div *ngIf="historyPrefectureRatesError" style="color:#d32f2f; font-weight:bold;">{{ historyPrefectureRatesError }}</div>
       </div>
     </ng-container>
-
-   
   </div>
 </div>
