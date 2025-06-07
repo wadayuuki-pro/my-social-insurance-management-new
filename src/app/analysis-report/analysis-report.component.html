@@ -101,6 +101,12 @@
 
   <!-- 📈 折れ線グラフ -->
   <div *ngIf="selectedTab === 'line'">
+    <div style="margin-bottom: 1.2rem;">
+      <label style="font-weight: bold; color: #1976d2; margin-right: 1em;">事業所選択：</label>
+      <select [(ngModel)]="selectedDepartmentId" (ngModelChange)="onDepartmentChange($event)" style="padding: 0.5em 1em; border-radius: 6px; border: 1px solid #e3eaf3; min-width: 180px;">
+        <option *ngFor="let dept of departmentList" [value]="dept.department_id">{{ dept.department_id }}（{{ dept.department_name }}）</option>
+      </select>
+    </div>
     <div class="graph-section">
       <h3>月別加入者数推移</h3>
       <canvas id="lineChart1" width="600" height="250"></canvas>
@@ -117,6 +123,12 @@
 
   <!-- 📊 棒グラフ／円グラフ -->
   <div *ngIf="selectedTab === 'barpie'">
+    <div style="margin-bottom: 1.2rem;">
+      <label style="font-weight: bold; color: #1976d2; margin-right: 1em;">事業所選択：</label>
+      <select [(ngModel)]="selectedDepartmentId" (ngModelChange)="onDepartmentChange($event)" style="padding: 0.5em 1em; border-radius: 6px; border: 1px solid #e3eaf3; min-width: 180px;">
+        <option *ngFor="let dept of departmentList" [value]="dept.department_id">{{ dept.department_id }}（{{ dept.department_name }}）</option>
+      </select>
+    </div>
     <div class="graph-section">
       <h3>拠点別保険料総額比較</h3>
       <canvas id="barChart1" width="600" height="250"></canvas>

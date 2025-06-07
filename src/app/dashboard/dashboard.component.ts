@@ -29,6 +29,16 @@ export class DashboardComponent implements OnInit {
 
   public isAdmin: boolean = false;
 
+  async logout() {
+    try {
+      await this.authService.signOut();
+      // ログアウト後はログインページにリダイレクト
+      this.router.navigate(['/login']);
+    } catch (error) {
+      console.error('ログアウト中にエラーが発生しました:', error);
+    }
+  }
+
   constructor(private auth: Auth, private firestore: Firestore, public authService: AuthService, private route: ActivatedRoute, private router: Router) {
     this.user$ = this.authService.user$;
     this.isAuthReady$ = this.authService.isAuthReady$;

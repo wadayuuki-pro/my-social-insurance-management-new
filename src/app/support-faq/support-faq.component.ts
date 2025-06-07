@@ -1,5 +1,7 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Firestore, collection, addDoc, serverTimestamp } from '@angular/fire/firestore';
+import { FormsModule } from '@angular/forms';
 
 interface FaqItem {
   question: string;
@@ -9,7 +11,7 @@ interface FaqItem {
 @Component({
   selector: 'app-support-faq',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   templateUrl: './support-faq.component.html',
   styleUrls: ['./support-faq.component.scss']
 })
@@ -17,6 +19,15 @@ export class SupportFaqComponent {
   selectedTab: string = 'faq';
   selectedCategory: number = 0; // 0:登録, 1:手続き, 2:トラブル
   selectedQuestionIndex: number = 0;
+
+  // 問い合わせフォーム用
+  inquiryName: string = '';
+  inquiryEmail: string = '';
+  inquiryType: string = '';
+  inquiryContent: string = '';
+  inquirySuccess: boolean = false;
+  inquirySending: boolean = false;
+  inquiryError: string = '';
 
   faqCategories = [
     {
@@ -48,6 +59,8 @@ export class SupportFaqComponent {
     }
   ];
 
+  constructor(private firestore: Firestore) {}
+
   selectCategory(idx: number) {
     this.selectedCategory = idx;
     this.selectedQuestionIndex = 0;
@@ -55,5 +68,34 @@ export class SupportFaqComponent {
 
   selectQuestion(idx: number) {
     this.selectedQuestionIndex = idx;
+  }
+
+  async submitInquiryForm(event: Event) {
+    event.preventDefault();
+    this.inquiryError = '';
+    this.inquirySuccess = false;
+    if (!this.inquiryName || !this.inquiryEmail || !this.inquiryType || !this.inquiryContent) {
+      this.inquiryError = 'すべての必須項目を入力してください。';
+      return;
+    }
+    this.inquirySending = true;
+    try {
+      await addDoc(collection(this.firestore, 'inquiries'), {
+        name: this.inquiryName,
+        email: this.inquiryEmail,
+        type: this.inquiryType,
+        content: this.inquiryContent,
+        created_at: serverTimestamp()
+      });
+      this.inquirySuccess = true;
+      this.inquiryName = '';
+      this.inquiryEmail = '';
+      this.inquiryType = '';
+      this.inquiryContent = '';
+    } catch (e) {
+      this.inquiryError = '送信中にエラーが発生しました。時間をおいて再度お試しください。';
+    } finally {
+      this.inquirySending = false;
+    }
   }
 } 

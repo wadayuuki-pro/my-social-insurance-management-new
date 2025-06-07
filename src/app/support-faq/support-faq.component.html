@@ -4,7 +4,6 @@
   <!-- タブUI -->
   <div class="tab-header">
     <button [class.active]="selectedTab === 'faq'" (click)="selectedTab = 'faq'">❓ FAQ</button>
-    <button [class.active]="selectedTab === 'manual'" (click)="selectedTab = 'manual'">📄 操作マニュアル</button>
     <button [class.active]="selectedTab === 'inquiry'" (click)="selectedTab = 'inquiry'">📩 問い合わせフォーム</button>
   </div>
 
@@ -27,38 +26,21 @@
     </div>
   </div>
 
-  <!-- 📄 操作マニュアル -->
-  <div *ngIf="selectedTab === 'manual'" class="manual-section">
-    <h3><span style="vertical-align: middle; color: #1976d2;">📄</span> 操作マニュアル</h3>
-    <div class="manual-list">
-      <div class="manual-card">
-        <div class="manual-title">利用者向けマニュアル</div>
-        <button class="manual-btn">閲覧</button>
-        <button class="manual-btn">ダウンロード</button>
-      </div>
-      <div class="manual-card admin-only">
-        <div class="manual-title">管理者用マニュアル（PDFアップロード）</div>
-        <input type="file" accept=".pdf" class="manual-upload" />
-        <button class="manual-btn">アップロード</button>
-      </div>
-    </div>
-  </div>
-
   <!-- 📩 問い合わせフォーム -->
   <div *ngIf="selectedTab === 'inquiry'" class="inquiry-section">
     <h3><span style="vertical-align: middle; color: #1976d2;">📩</span> お問い合わせフォーム</h3>
-    <form class="inquiry-form">
+    <form class="inquiry-form" (ngSubmit)="submitInquiryForm($event)">
       <div class="form-row">
         <label for="inquiryName"><span style="color:#d32f2f;">*</span> 氏名</label>
-        <input id="inquiryName" type="text" placeholder="例：山田 太郎" required />
+        <input id="inquiryName" type="text" placeholder="例：山田 太郎" required [(ngModel)]="inquiryName" name="inquiryName" />
       </div>
       <div class="form-row">
         <label for="inquiryEmail"><span style="color:#d32f2f;">*</span> メールアドレス</label>
-        <input id="inquiryEmail" type="email" placeholder="例：example@example.com" required />
+        <input id="inquiryEmail" type="email" placeholder="例：example@example.com" required [(ngModel)]="inquiryEmail" name="inquiryEmail" />
       </div>
       <div class="form-row">
         <label for="inquiryType"><span style="color:#d32f2f;">*</span> 問い合わせ種別</label>
-        <select id="inquiryType" required>
+        <select id="inquiryType" required [(ngModel)]="inquiryType" name="inquiryType">
           <option value="">選択してください</option>
           <option>質問</option>
           <option>不具合報告</option>
@@ -68,11 +50,11 @@
       </div>
       <div class="form-row">
         <label for="inquiryContent"><span style="color:#d32f2f;">*</span> 問い合わせ内容</label>
-        <textarea id="inquiryContent" rows="5" placeholder="ご質問・ご要望・不具合内容などをご記入ください" required></textarea>
+        <textarea id="inquiryContent" rows="5" placeholder="ご質問・ご要望・不具合内容などをご記入ください" required [(ngModel)]="inquiryContent" name="inquiryContent"></textarea>
       </div>
-      
-      <button type="submit" class="inquiry-btn" style="margin-top:1em; min-width: 120px;">送信する</button>
-      <div class="inquiry-success-msg" style="display:none; margin-top:1em;">送信が完了しました。自動返信メールをお送りしました。<br>ご入力いただいたメールアドレス宛にご連絡いたします。</div>
+      <div *ngIf="inquiryError" style="color:#d32f2f; margin-top:0.5em;">{{ inquiryError }}</div>
+      <button type="submit" class="inquiry-btn" style="margin-top:1em; min-width: 120px;" [disabled]="inquirySending">{{ inquirySending ? '送信中...' : '送信する' }}</button>
+      <div *ngIf="inquirySuccess" class="inquiry-success-msg" style="margin-top:1em; color:#388e3c; font-weight:bold;">送信が完了しました。自動返信メールをお送りしました。<br>ご入力いただいたメールアドレス宛にご連絡いたします。</div>
     </form>
     <div class="inquiry-note" style="margin-top:1.5em; color:#888; font-size:0.98em;">
       <span style="color:#d32f2f;">*</span>は必須項目です。<br>

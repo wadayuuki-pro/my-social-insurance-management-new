@@ -90,6 +90,9 @@ export class AnalysisReportComponent {
   public isAuthReady$;
   public employeeInfo$;
 
+  // グラフインスタンスを保持するプロパティを追加
+  private chartInstances: { [key: string]: any } = {};
+
   constructor(private authService: AuthService, private firestore: Firestore) {
     this.user$ = this.authService.user$;
     this.isAuthReady$ = this.authService.isAuthReady$;
@@ -143,6 +146,12 @@ export class AnalysisReportComponent {
     this.selectedDepartmentId = deptId;
     await this.loadEmployeeCount();
     await this.loadEmployeeStatusCount();
+    await this.loadMonthlyEnrollmentData();
+    await this.loadMonthlySalaryAndBonusData();
+    await this.loadBranchInsuranceTotals();
+    await this.loadBranchPieData();
+    // データ更新後にグラフを再描画
+    this.renderCharts();
   }
 
   async loadEmployeeCount() {
@@ -284,7 +293,12 @@ export class AnalysisReportComponent {
 
     // 従業員データを取得
     const employeesCol = collection(this.firestore, 'employees');
-    const q = query(employeesCol, where('company_id', '==', this.companyId));
+    let q;
+    if (this.selectedDepartmentId) {
+      q = query(employeesCol, where('company_id', '==', this.companyId), where('department_id', '==', this.selectedDepartmentId));
+    } else {
+      q = query(employeesCol, where('company_id', '==', this.companyId));
+    }
     const snapshot = await getDocs(q);
 
     // 各従業員の加入日と脱退日を確認
@@ -373,15 +387,22 @@ export class AnalysisReportComponent {
         console.log('timestamp:', timestamp, '→ month:', month);
         console.log('months配列:', months);
         if (this.monthlySalaryChangeData[month] !== undefined) {
-          this.monthlySalaryChangeData[month]++;
-          console.log('カウント増加:', month);
+          // 部署フィルタ
+          if (!this.selectedDepartmentId || (data['department_id'] === this.selectedDepartmentId)) {
+            this.monthlySalaryChangeData[month]++;
+          }
         }
       }
     });
 
     // 賞与データの取得（employees/salaries）
     const employeesCol = collection(this.firestore, 'employees');
-    const employeesQuery = query(employeesCol, where('company_id', '==', this.companyId));
+    let employeesQuery;
+    if (this.selectedDepartmentId) {
+      employeesQuery = query(employeesCol, where('company_id', '==', this.companyId), where('department_id', '==', this.selectedDepartmentId));
+    } else {
+      employeesQuery = query(employeesCol, where('company_id', '==', this.companyId));
+    }
     const employeesSnapshot = await getDocs(employeesQuery);
 
     for (const empDoc of employeesSnapshot.docs) {
@@ -420,8 +441,11 @@ export class AnalysisReportComponent {
     const pensionTotals: number[] = [];
     const kaigoTotals: number[] = [];
     const labels: string[] = [];
-    for (let i = 0; i < Math.min(3, branches.length); i++) {
-      const branch = branches[i];
+    // 選択された事業所がある場合はその事業所のみ、なければ全事業所
+    const targetBranches = this.selectedDepartmentId 
+      ? branches.filter(b => b.department_id === this.selectedDepartmentId)
+      : branches.slice(0, Math.min(3, branches.length));
+    for (const branch of targetBranches) {
       labels.push(branch.department_name);
       let health = 0, pension = 0, kaigo = 0;
       // 拠点ごとの従業員取得
@@ -473,8 +497,11 @@ export class AnalysisReportComponent {
     const pieLabels: string[] = [];
     const companyBurden: number[] = [];
     const employeeBurden: number[] = [];
-    for (let i = 0; i < Math.min(3, branches.length); i++) {
-      const branch = branches[i];
+    // 選択された事業所がある場合はその事業所のみ、なければ全事業所
+    const targetBranches = this.selectedDepartmentId 
+      ? branches.filter(b => b.department_id === this.selectedDepartmentId)
+      : branches.slice(0, Math.min(3, branches.length));
+    for (const branch of targetBranches) {
       pieLabels.push(branch.department_name);
       let company = 0, employee = 0;
       // 拠点ごとの従業員取得
@@ -522,7 +549,16 @@ export class AnalysisReportComponent {
 
   selectTab(tab: string) {
     this.selectedTab = tab;
-    setTimeout(() => this.renderCharts(), 0); // タブ切り替え後にグラフ再描画
+    // タブ切り替え時にデータを再取得してからグラフを再描画
+    this.loadMonthlyEnrollmentData().then(() => {
+      this.loadMonthlySalaryAndBonusData().then(() => {
+        this.loadBranchInsuranceTotals().then(() => {
+          this.loadBranchPieData().then(() => {
+            this.renderCharts();
+          });
+        });
+      });
+    });
   }
 
   ngAfterViewInit() {
@@ -539,10 +575,18 @@ export class AnalysisReportComponent {
   }
 
   renderCharts() {
+    // 既存のグラフインスタンスを破棄
+    Object.values(this.chartInstances).forEach(chart => {
+      if (chart) {
+        chart.destroy();
+      }
+    });
+    this.chartInstances = {};
+
     // 折れ線グラフ: 月別加入者数（健康保険・厚生年金）
     const ctx1 = (document.getElementById('lineChart1') as HTMLCanvasElement)?.getContext('2d');
     if (ctx1 && (window as any).Chart) {
-      new (window as any).Chart(ctx1, {
+      this.chartInstances['lineChart1'] = new (window as any).Chart(ctx1, {
         type: 'line',
         data: {
           labels: this.chartLabels,
@@ -597,7 +641,7 @@ export class AnalysisReportComponent {
     // 折れ線グラフ: 月別喪失者数
     const ctx2 = (document.getElementById('lineChart2') as HTMLCanvasElement)?.getContext('2d');
     if (ctx2 && (window as any).Chart) {
-      new (window as any).Chart(ctx2, {
+      this.chartInstances['lineChart2'] = new (window as any).Chart(ctx2, {
         type: 'line',
         data: {
           labels: this.chartLabels,
@@ -652,7 +696,7 @@ export class AnalysisReportComponent {
     // 折れ線グラフ: 月額変更・賞与支給の推移
     const ctx3 = (document.getElementById('lineChart3') as HTMLCanvasElement)?.getContext('2d');
     if (ctx3 && (window as any).Chart) {
-      new (window as any).Chart(ctx3, {
+      this.chartInstances['lineChart3'] = new (window as any).Chart(ctx3, {
         type: 'line',
         data: {
           labels: this.chartLabels,
@@ -707,7 +751,7 @@ export class AnalysisReportComponent {
     // 棒グラフ: 拠点別保険料総額比較
     const ctx4 = (document.getElementById('barChart1') as HTMLCanvasElement)?.getContext('2d');
     if (ctx4 && (window as any).Chart) {
-      new (window as any).Chart(ctx4, {
+      this.chartInstances['barChart1'] = new (window as any).Chart(ctx4, {
         type: 'bar',
         data: {
           labels: this.branchLabels,
@@ -746,29 +790,29 @@ export class AnalysisReportComponent {
     for (let i = 0; i < this.branchPieLabels.length; i++) {
       const ctx = (document.getElementById('pieChart' + i) as HTMLCanvasElement)?.getContext('2d');
       if (ctx && (window as any).Chart) {
-        new (window as any).Chart(ctx, {
-        type: 'pie',
-        data: {
-          labels: ['会社負担', '従業員負担'],
-          datasets: [
-            {
+        this.chartInstances['pieChart' + i] = new (window as any).Chart(ctx, {
+          type: 'pie',
+          data: {
+            labels: ['会社負担', '従業員負担'],
+            datasets: [
+              {
                 data: [this.branchCompanyBurden[i], this.branchEmployeeBurden[i]],
-              backgroundColor: ['#1976d2', '#ffb300'],
-              borderColor: '#fff',
-              borderWidth: 2
-            }
-          ]
-        },
-        options: {
-          responsive: false,
-          plugins: {
-            legend: { display: true, position: 'bottom' },
+                backgroundColor: ['#1976d2', '#ffb300'],
+                borderColor: '#fff',
+                borderWidth: 2
+              }
+            ]
+          },
+          options: {
+            responsive: false,
+            plugins: {
+              legend: { display: true, position: 'bottom' },
               title: { display: true, text: this.branchPieLabels[i] + ' 保険料負担割合', font: { size: 18 } },
-            tooltip: {
-              callbacks: {
-                label: function(context: any) {
-                  const label = context.label || '';
-                  const value = context.parsed;
+              tooltip: {
+                callbacks: {
+                  label: function(context: any) {
+                    const label = context.label || '';
+                    const value = context.parsed;
                     return `${label}: ${value}円`;
                   }
                 }
@@ -776,12 +820,12 @@ export class AnalysisReportComponent {
             }
           }
         });
-        }
+      }
     }
     // 棒グラフ: 従業員ステータス別人数
     const ctx6 = (document.getElementById('barChart2') as HTMLCanvasElement)?.getContext('2d');
     if (ctx6 && (window as any).Chart) {
-      new (window as any).Chart(ctx6, {
+      this.chartInstances['barChart2'] = new (window as any).Chart(ctx6, {
         type: 'bar',
         data: {
           labels: ['在籍中', '休職中', '産休中', '育休中', '退職予定', '退職'],

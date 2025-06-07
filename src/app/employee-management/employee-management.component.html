@@ -367,13 +367,25 @@
                   </ng-container>
                 </ng-container>
                 <ng-container *ngSwitchCase="'health_insurance_number'">
-                  <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" (input)="onNewHealthInsuranceNumberChange()" maxlength="8" />
+                  <input 
+                    [formControlName]="field" 
+                    [placeholder]="employeeFieldPlaceholders[field] || ''" 
+                    (input)="onNumberInput($event, field)" 
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    maxlength="8" />
                   <div class="error-message" *ngIf="newEmployeeForm.get(field)?.errors?.['length'] && newEmployeeForm.get(field)?.touched">
                     健康保険番号は8桁で入力してください
                   </div>
                 </ng-container>
                 <ng-container *ngSwitchCase="'pension_number'">
-                  <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" (input)="onNewPensionNumberChange()" maxlength="12" />
+                  <input 
+                    [formControlName]="field" 
+                    [placeholder]="employeeFieldPlaceholders[field] || ''" 
+                    (input)="onNumberInput($event, field)" 
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    maxlength="12" />
                   <div class="error-message" *ngIf="newEmployeeForm.get(field)?.errors?.['length'] && newEmployeeForm.get(field)?.touched">
                     基礎年金番号は12桁で入力してください
                   </div>
@@ -407,6 +419,15 @@
                   <select [formControlName]="field">
                     <option *ngFor="let option of remarksOptions" [value]="option">{{ option }}</option>
                   </select>
+                </ng-container>
+                <ng-container *ngSwitchCase="'phone_number'">
+                  <input 
+                    [formControlName]="field" 
+                    [placeholder]="employeeFieldPlaceholders[field] || ''" 
+                    (input)="onNumberInput($event, field)" 
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    maxlength="15" />
                 </ng-container>
                 <ng-container *ngSwitchDefault>
                   <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" />
@@ -603,16 +624,37 @@
                     </ng-container>
                   </ng-container>
                   <ng-container *ngSwitchCase="'health_insurance_number'">
-                    <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" (input)="onHealthInsuranceNumberChange()" maxlength="8" />
+                    <input 
+                      [formControlName]="field" 
+                      [placeholder]="employeeFieldPlaceholders[field] || ''" 
+                      (input)="onNumberInput($event, field)" 
+                      inputmode="numeric"
+                      pattern="[0-9]*"
+                      maxlength="8" />
                     <div class="error-message" *ngIf="detailForm.get(field)?.errors?.['length'] && detailForm.get(field)?.touched">
                       健康保険番号は8桁で入力してください
                     </div>
                   </ng-container>
                   <ng-container *ngSwitchCase="'pension_number'">
-                    <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" (input)="onPensionNumberChange()" maxlength="12" />
+                    <input 
+                      [formControlName]="field" 
+                      [placeholder]="employeeFieldPlaceholders[field] || ''" 
+                      (input)="onNumberInput($event, field)" 
+                      inputmode="numeric"
+                      pattern="[0-9]*"
+                      maxlength="12" />
                     <div class="error-message" *ngIf="detailForm.get(field)?.errors?.['length'] && detailForm.get(field)?.touched">
                       基礎年金番号は12桁で入力してください
                     </div>
+                  </ng-container>
+                  <ng-container *ngSwitchCase="'phone_number'">
+                    <input 
+                      [formControlName]="field" 
+                      [placeholder]="employeeFieldPlaceholders[field] || ''" 
+                      (input)="onNumberInput($event, field)" 
+                      inputmode="numeric"
+                      pattern="[0-9]*"
+                      maxlength="15" />
                   </ng-container>
                   <ng-container *ngSwitchCase="'postal_code'">
                     <input [formControlName]="field" type="text" [placeholder]="employeeFieldPlaceholders[field]" (ngModelChange)="onDetailPostalCodeChange($event)" maxlength="8" />

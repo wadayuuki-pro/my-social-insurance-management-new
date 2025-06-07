@@ -1444,6 +1444,17 @@ export class EmployeeManagementComponent implements OnInit {
     }
   }
 
+  // 数値入力用の共通関数を追加
+  onNumberInput(event: any, field: string) {
+    const value = event.target.value.replace(/[^0-9]/g, '');
+    if (this.detailForm && this.detailForm.get(field)) {
+      this.detailForm.get(field)!.setValue(value, { emitEvent: false });
+    }
+    if (this.newEmployeeForm && this.newEmployeeForm.get(field)) {
+      this.newEmployeeForm.get(field)!.setValue(value, { emitEvent: false });
+    }
+  }
+
   // 郵便番号から住所を検索（新規メンバー用）
   async searchNewEmployeeAddressByPostalCode(postalCode: string) {
     if (!postalCode || postalCode.length !== 7) return;

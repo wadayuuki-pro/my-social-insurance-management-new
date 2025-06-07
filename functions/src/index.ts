@@ -98,3 +98,38 @@ export const sendApprovalNotification = functions.firestore
     }
   });
 
+// 問い合わせが作成されたときに管理者にメール通知を送信
+export const sendInquiryNotification = functions.firestore
+  .document("inquiries/{inquiryId}")
+  .onCreate(async (snap: any, context: any) => {
+    const inquiry = snap.data();
+    if (!inquiry) return;
+
+    // 管理者メールアドレス（必要に応じて複数可）
+    const adminEmails = [functions.config().gmail.email];
+
+    // メール本文を作成
+    const mailOptions = {
+      from: functions.config().gmail.email,
+      to: adminEmails.join(","),
+      subject: `【お問い合わせ】${inquiry.type}：${inquiry.name}様`,
+      html: `
+        <h2>新しいお問い合わせが届きました</h2>
+        <p><strong>氏名：</strong>${inquiry.name}</p>
+        <p><strong>メールアドレス：</strong>${inquiry.email}</p>
+        <p><strong>種別：</strong>${inquiry.type}</p>
+        <p><strong>内容：</strong></p>
+        <p>${inquiry.content.replace(/\n/g, "<br>")}</p>
+        <hr>
+        <p>このメールはシステムから自動送信されています。</p>
+      `,
+    };
+
+    try {
+      await transporter.sendMail(mailOptions);
+      console.log("問い合わせ通知メールを送信しました");
+    } catch (error) {
+      console.error("問い合わせメール送信エラー:", error);
+    }
+  });
+

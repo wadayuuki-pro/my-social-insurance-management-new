@@ -34,4 +34,15 @@ export class AuthService {
       this.authReadySubject.next(true); // 初期化完了
     });
   }
+
+  async signOut(): Promise<void> {
+    try {
+      await this.auth.signOut();
+      this.userSubject.next(null);
+      this.companyIdSubject.next(null);
+    } catch (error) {
+      console.error('Error signing out:', error);
+      throw error;
+    }
+  }
 } 
