@@ -743,8 +743,41 @@ export class EmployeeManagementComponent implements OnInit {
   }
 
   async openDetail(emp: any) {
-    this.selectedEmployee = { ...emp };
-    this.detailForm = this.fb.group({});
+    this.selectedEmployee = emp;
+    this.detailForm = this.fb.group({
+      employee_code: [emp.employee_code],
+      last_name_kanji: [emp.last_name_kanji, Validators.required],
+      first_name_kanji: [emp.first_name_kanji, Validators.required],
+      last_name_kana: [emp.last_name_kana, [Validators.required, this.katakanaValidator]],
+      first_name_kana: [emp.first_name_kana, [Validators.required, this.katakanaValidator]],
+      email: [emp.email, [Validators.required, Validators.email]],
+      department_id: [emp.department_id, Validators.required],
+      company_id: [emp.company_id],
+      role: [emp.role],
+      phone_number: [emp.phone_number],
+      postal_code: [emp.postal_code],
+      address: [emp.address],
+      date_of_birth: [emp.date_of_birth],
+      gender: [emp.gender],
+      employment_type: [emp.employment_type],
+      employment_start_date: [emp.employment_start_date],
+      employment_end_date: [emp.employment_end_date],
+      status: [emp.status],
+      health_insurance_number: [emp.health_insurance_number, this.healthInsuranceNumberValidator],
+      pension_number: [emp.pension_number, this.pensionNumberValidator],
+      health_insurance_enrolled: [emp.health_insurance_enrolled],
+      pension_insurance_enrolled: [emp.pension_insurance_enrolled],
+      has_dependents: [emp.has_dependents],
+      is_dependent: [emp.is_dependent],
+      remarks: [emp.remarks],
+      dependents: this.fb.array([])
+    });
+
+    // 編集不可のフィールドを無効化
+    this.detailForm.get('company_id')?.disable();
+    this.detailForm.get('role')?.disable();
+    this.detailForm.get('employee_code')?.disable();
+
     // 会社IDに紐づく事業所リストを取得
     this.departments = [];
     if (emp.company_id) {
@@ -1051,7 +1084,7 @@ export class EmployeeManagementComponent implements OnInit {
 
     // 扶養者情報を除外した基本情報のカラム
     const baseFields = this.employeeFieldOrder.filter(f => 
-      !['company_id', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at'].includes(f)
+      !['company_id','employee_code', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at'].includes(f)
     );
 
     // ヘッダー行の作成
@@ -1092,7 +1125,7 @@ export class EmployeeManagementComponent implements OnInit {
   exportEmployeeCSV(employee: any) {
     // 扶養者情報を除外した基本情報のカラム
     const baseFields = this.employeeFieldOrder.filter(f => 
-      !['company_id', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at'].includes(f)
+      !['company_id','employee_code', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at'].includes(f)
     );
 
     // ヘッダー行の作成
@@ -1142,6 +1175,31 @@ export class EmployeeManagementComponent implements OnInit {
     this.newEmployeeForm.get('role')?.disable();
     this.newEmployeeForm.get('password')?.disable();  // パスワードフィールドを無効化
     this.newEmployeeForm.get('is_dependent')?.setValue(false);
+
+    // 社員IDの自動生成
+    const employeesRef = collection(this.firestore, 'employees');
+    const q = query(employeesRef, where('company_id', '==', this.companyId));
+    const querySnapshot = await getDocs(q);
+    const employees = querySnapshot.docs.map(doc => doc.data());
+    
+    // 現在の最大の社員IDを取得
+    let maxEmployeeCode = 0;
+    employees.forEach(emp => {
+      const empCode = parseInt(emp['employee_code']);
+      if (!isNaN(empCode) && empCode > maxEmployeeCode) {
+        maxEmployeeCode = empCode;
+      }
+    });
+    
+    // 新しい社員IDを生成（会社ID + 連番）
+    const newEmployeeCode = maxEmployeeCode + 1;
+    const formattedEmployeeCode = newEmployeeCode.toString().padStart(6, '0');
+    
+    // フォームに設定し、無効化
+    this.newEmployeeForm.patchValue({
+      employee_code: formattedEmployeeCode
+    });
+    this.newEmployeeForm.get('employee_code')?.disable();
 
     this.showNewEmployeeModal = true;
   }
@@ -1715,8 +1773,6 @@ export class EmployeeManagementComponent implements OnInit {
     for (let i = 1; i < lines.length; i++) {
       const row = lines[i].split(',').map((v: string) => v.replace(/"/g, '').trim());
       if (row.length !== expectedHeaders.length) continue;
-      const employee_code = row[1];
-      if (!employee_code) continue;
       // Excelの指数表記を文字列に変換（基礎年金番号・健康保険番号）
       let pension_number = row[22];
       let health_insurance_number = row[21];
@@ -1730,12 +1786,26 @@ export class EmployeeManagementComponent implements OnInit {
       // Firestoreで従業員を検索
       try {
         const employeesCol = collection(this.firestore, 'employees');
-        const q = query(employeesCol, where('company_id', '==', this.companyId), where('employee_code', '==', employee_code));
+        const q = query(employeesCol, where('company_id', '==', this.companyId));
         const snapshot = await getDocs(q);
+
+        // 社員IDの自動生成
+        let maxEmployeeCode = 0;
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          if (data['employee_code']) {
+            const code = parseInt(data['employee_code']);
+            if (!isNaN(code) && code > maxEmployeeCode) {
+              maxEmployeeCode = code;
+            }
+          }
+        });
+        const newEmployeeCode = String(maxEmployeeCode + 1).padStart(6, '0');
+
         const employeeData: any = {
           company_id: this.companyId,
+          employee_code: newEmployeeCode,
           department_id: row[0],
-          employee_code: row[1],
           last_name_kanji: row[2],
           first_name_kanji: row[3],
           last_name_kana: row[4],
