@@ -1,33 +1,29 @@
 <div class="login-container">
   <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="login-card">
     <h2>ログイン</h2>
-    <div class="form-group">
-      <label for="company_id">会社ID</label>
+    <div class="form-group" *ngIf="loginForm.get('email')?.value !== 'yuki.wada@pathoslogos.co.jp'">
+      <label for="company_id">会社ID <span class="required">*</span></label>
       <input id="company_id" type="text" formControlName="company_id" placeholder="会社ID" />
       <div class="error" *ngIf="loginForm.get('company_id')?.invalid && loginForm.get('company_id')?.touched">
         会社IDを入力してください。
       </div>
     </div>
-    <div class="form-group">
-      <label for="department_id">事業所ID（任意）</label>
-      <input id="department_id" type="text" formControlName="department_id" placeholder="事業所ID（任意）" />
-    </div>
-    <div class="form-group">
-      <label for="employee_id">社員ID</label>
+    <div class="form-group" *ngIf="loginForm.get('email')?.value !== 'yuki.wada@pathoslogos.co.jp'">
+      <label for="employee_id">社員ID <span class="required">*</span></label>
       <input id="employee_id" type="text" formControlName="employee_id" placeholder="社員ID" />
       <div class="error" *ngIf="loginForm.get('employee_id')?.invalid && loginForm.get('employee_id')?.touched">
         社員IDを入力してください。
       </div>
     </div>
     <div class="form-group">
-      <label for="email">メールアドレス</label>
+      <label for="email">メールアドレス <span class="required">*</span></label>
       <input id="email" type="email" formControlName="email" placeholder="your@email.com" />
       <div class="error" *ngIf="loginForm.get('email')?.invalid && loginForm.get('email')?.touched">
         有効なメールアドレスを入力してください。
       </div>
     </div>
     <div class="form-group" style="position: relative;">
-      <label for="password">パスワード</label>
+      <label for="password">パスワード <span class="required">*</span></label>
       <input id="password" [type]="showPassword ? 'text' : 'password'" formControlName="password" placeholder="6文字以上" />
       <button type="button" (click)="togglePasswordVisibility()" style="position: absolute; right: 0.7rem; top: 2.1rem; background: none; border: none; cursor: pointer;">
         <span *ngIf="!showPassword">👁️</span>

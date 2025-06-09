@@ -162,10 +162,11 @@ export class VendorPageComponent {
       await setDoc(companyDoc, data);
       // 代表者をemployeesコレクションにも追加
       const initialPassword = newId + '00';
+      const employeeCode = newId + '000'; // 会社ID+000
       const employeeData = {
         company_id: newId,
         department_id: '',
-        employee_code: newId,
+        employee_code: employeeCode,
         last_name_kanji: '',
         first_name_kanji: '',
         last_name_kana: '',
@@ -255,7 +256,24 @@ export class VendorPageComponent {
 
     try {
       const companyId = this.branchForm.get('company_id')?.value;
-      const departmentId = this.branchForm.get('department_id')?.value || `${companyId}-${String(this.departmentCount + 1).padStart(2, '0')}`;
+      let departmentId = this.branchForm.get('department_id')?.value;
+      if (!departmentId) {
+        // Firestoreから既存の事業所IDを取得し、最大番号+1で生成
+        const departmentsCol = collection(this.firestore, 'departments');
+        const q = query(departmentsCol, where('company_id', '==', companyId));
+        const snapshot = await getDocs(q);
+        // 会社ID-XX形式の番号部分を抽出
+        const numbers = snapshot.docs
+          .map(doc => doc.data()['department_id'])
+          .filter((id: string) => id && id.startsWith(companyId + '-'))
+          .map((id: string) => parseInt(id.split('-')[1], 10))
+          .filter((num: number) => !isNaN(num));
+        let nextNum = 1;
+        if (numbers.length > 0) {
+          nextNum = Math.max(...numbers) + 1;
+        }
+        departmentId = `${companyId}-${String(nextNum).padStart(2, '0')}`;
+      }
 
       // 事業所IDの重複チェック
       const departmentDocRef = doc(this.firestore, 'departments', departmentId);
@@ -315,8 +333,8 @@ export class VendorPageComponent {
 
   // 都道府県名から都道府県ID+短縮名を取得する関数
   getPrefectureId(prefectureName: string): string {
-    // 「県」「府」「都」「道」を除去せず、そのまま都道府県名のみ返す
-    return prefectureName;
+    // 「県」「府」「都」「道」を除去して短縮名を返す
+    return prefectureName.replace(/[都道府県]/g, '');
   }
 
   // 郵便番号から住所を検索（会社用）

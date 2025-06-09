@@ -107,8 +107,8 @@
       <input type="email" formControlName="email" placeholder="メールアドレス（任意）" />
     </div>
     <div class="form-group">
-      <label>所属長・責任者氏名</label>
-      <input type="text" formControlName="manager_name" placeholder="所属長・責任者氏名（任意）" />
+      <label>所属長・責任者氏名 <span class="required">*</span></label>
+      <input type="text" formControlName="manager_name" placeholder="所属長・責任者氏名（必須）" />
     </div>
     <button type="submit" [disabled]="branchForm.invalid">事業所追加</button>
   </form>

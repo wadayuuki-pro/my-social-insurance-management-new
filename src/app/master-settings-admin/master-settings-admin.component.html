@@ -1,4 +1,26 @@
 <div class="master-settings-admin-container">
+  <!-- ログイン情報表示 -->
+  <div class="dashboard-user-info" style="position: absolute; top: 1.2rem; right: 2.5rem; background: #e3f2fd; color: #1976d2; border-radius: 8px; padding: 0.7rem 1.2rem; font-size: 1rem; font-weight: 500; box-shadow: 0 2px 8px rgba(25, 118, 210, 0.08);">
+    <ng-container *ngIf="isAuthReady$ | async as isReady">
+      <ng-container *ngIf="isReady; else loading">
+        <ng-container *ngIf="user$ | async as user">
+          <span *ngIf="employeeInfo">
+            ログイン中：会社ID:{{ employeeInfo.company_id }}／社員ID:{{ employeeInfo.employee_code }}／氏名:{{ employeeInfo.last_name_kanji }}{{ employeeInfo.first_name_kanji }}
+          </span>
+          <span *ngIf="!employeeInfo">
+            ログイン情報が取得できません
+          </span>
+        </ng-container>
+      </ng-container>
+      <ng-template #loading>
+        <span>認証確認中...</span>
+      </ng-template>
+    </ng-container>
+  </div>
+  <div style="position: absolute; top: 20px; right: 40px; text-align: right; z-index: 10;">
+    <div style="font-size: 1.05em; color: #1976d2; font-weight: bold;">{{ userName }}</div>
+    
+  </div>
   <h1>マスタ設定・自社管理（管理者専用）</h1>
   <div class="tab-header">
     <button [class.active]="selectedTab === 'company'" (click)="selectTab('company')">🏠 自社情報管理</button>
@@ -125,8 +147,8 @@
                   </select>
                 </td>
                 <td style="display: flex; gap: 0.5em;">
-                  <button class="btn btn-sm btn-danger" style="min-width: 60px;">削除</button>
-                  <button class="btn btn-sm btn-secondary" style="min-width: 90px;">PWリセット</button>
+                  <button class="btn btn-sm btn-danger" style="min-width: 60px;" (click)="deleteEmployee(employee.id)">削除</button>
+                  <button class="btn btn-sm btn-secondary" style="min-width: 90px;" (click)="resetEmployeePassword(employee.email)">PWリセット</button>
                 </td>
               </tr>
               <tr *ngIf="filteredEmployeeList.length === 0">

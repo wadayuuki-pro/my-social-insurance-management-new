@@ -538,8 +538,18 @@ export class PayrollManagementComponent implements OnInit {
   // 給与明細の削除
   async deleteSalary(salary: RegisteredSalary) {
     if (confirm('この給与明細を削除してもよろしいですか？')) {
-      // TODO: Firestoreから削除
-      console.log('削除:', salary);
+      try {
+        const employeeId = this.selectedEmployeeId;
+        const salaryId = salary.id;
+        if (!employeeId || !salaryId) throw new Error('IDが不正です');
+        const salaryDocRef = doc(this.firestore, 'employees', employeeId, 'salaries', salaryId);
+        await deleteDoc(salaryDocRef);
+        // 削除履歴を保存（operation: 'delete', operationフィールドは'削除'、changeMessage: '明細が削除されました'）
+        await this.saveSalaryHistory(employeeId, { ...salary, operation: '削除', changeMessage: '明細が削除されました' }, 'delete');
+        await this.loadRegisteredSalaries();
+      } catch (e) {
+        alert('削除に失敗しました: ' + (e as any).message);
+      }
     }
   }
 
@@ -557,8 +567,42 @@ export class PayrollManagementComponent implements OnInit {
     }
 
     // 給与明細データ
+    const yearMonth = ((event.target as HTMLFormElement).querySelector('input[type="month"]') as HTMLInputElement)?.value || '';
+    const isAllBonus = this.salaryDetails.every(d => d.type === 'bonus');
+    const isAnyNonBonus = this.salaryDetails.some(d => d.type !== 'bonus');
+
+    // Firestoreに同じ年月のデータがあるかチェック
+    const salariesCol = collection(this.firestore, 'employees', employeeId, 'salaries');
+    const q = query(salariesCol, where('year_month', '==', yearMonth));
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
+      // 既存データのdetailsを確認
+      let hasNonBonus = false;
+      let bonusCount = 0;
+      snapshot.forEach(docSnap => {
+        const details = docSnap.data()['details'] || [];
+        if (details.some((d: any) => d.type !== 'bonus')) {
+          hasNonBonus = true;
+        }
+        if (details.length === 1 && details[0].type === 'bonus') {
+          bonusCount++;
+        }
+      });
+      // bonus以外が既に存在する場合
+      if (isAnyNonBonus && hasNonBonus) {
+        alert('同じ年月の給与明細（基本給や手当）が既に存在します。編集または削除してください。');
+        return;
+      }
+      // bonusのみ登録の場合、既にbonusが1件以上あればエラー
+      if (isAllBonus && bonusCount >= 1) {
+        alert('同じ年月の賞与明細は2件以上登録できません。');
+        return;
+      }
+    }
+
+    // 通常の登録処理
     const salaryData = {
-      year_month: ((event.target as HTMLFormElement).querySelector('input[type="month"]') as HTMLInputElement)?.value || '',
+      year_month: yearMonth,
       details: this.salaryDetails,
       total_amount: this.totalAmount,
       taxable_amount: this.taxableAmount,
@@ -568,7 +612,6 @@ export class PayrollManagementComponent implements OnInit {
     };
 
     // Firestoreに追加
-    const salariesCol = collection(this.firestore, 'employees', employeeId, 'salaries');
     const docRef = await addDoc(salariesCol, salaryData);
     // 履歴も保存
     await this.saveSalaryHistory(employeeId, salaryData, 'create');
@@ -578,7 +621,7 @@ export class PayrollManagementComponent implements OnInit {
   }
 
   // 履歴保存
-  async saveSalaryHistory(employeeId: string, salaryData: any, operation: 'create' | 'update') {
+  async saveSalaryHistory(employeeId: string, salaryData: any, operation: 'create' | 'update' | 'delete') {
     if (!this.currentCompanyId) return;
     // employeeIdからemployee_codeと氏名を取得
     const empDoc = this.employees.find(e => e.id === employeeId);
@@ -602,8 +645,36 @@ export class PayrollManagementComponent implements OnInit {
       social_insurance_deduction: salaryData.social_insurance_deduction,
       operation,
       operated_at: new Date(),
-      operator: operatorName // 氏名で保存
+      operator: operatorName, // 氏名で保存
+      changeMessage: this.generateChangeMessage(salaryData, null)
     });
+  }
+
+  // 変更内容メッセージ生成関数
+  generateChangeMessage(current: any, prev: any): string {
+    if (current.operation === 'import') {
+      return current.changeMessage || 'インポートされました。';
+    }
+    if (current.operation === '削除' || current.operation === 'delete') {
+      return '明細が削除されました';
+    }
+    if (!prev) {
+      return '明細が追加されました';
+    }
+    if (current.total_amount !== prev.total_amount) {
+      return `総支給額が変更されました（${prev.total_amount?.toLocaleString()}円→${current.total_amount?.toLocaleString()}円）`;
+    }
+    // 明細の追加
+    const prevTypes = new Set((prev.details || []).map((d: any) => d.type));
+    const currTypes = new Set((current.details || []).map((d: any) => d.type));
+    for (const type of currTypes) {
+      if (!prevTypes.has(type)) {
+        const added = (current.details || []).find((d: any) => d.type === type);
+        const label = this.salaryTypes.find(t => t.value === type)?.label || type;
+        return `${label}が追加されました（${added.amount?.toLocaleString()}円）`;
+      }
+    }
+    return '内容が更新されました';
   }
 
   // 直近12ヶ月分の給与データ取得
@@ -1281,33 +1352,6 @@ export class PayrollManagementComponent implements OnInit {
     this.salaryHistories = histories;
     this.isHistoryLoading = false;
   }
-
-  // 変更内容メッセージ生成関数
-  generateChangeMessage(current: any, prev: any): string {
-    // インポートの場合は既存のメッセージをそのまま使用
-    if (current.operation === 'import') {
-      return current.changeMessage || 'インポートされました。';
-    }
-    if (!prev) {
-      return '明細が追加されました';
-    }
-    if (current.total_amount !== prev.total_amount) {
-      return `総支給額が変更されました（${prev.total_amount?.toLocaleString()}円→${current.total_amount?.toLocaleString()}円）`;
-    }
-    // 明細の追加
-    const prevTypes = new Set((prev.details || []).map((d: any) => d.type));
-    const currTypes = new Set((current.details || []).map((d: any) => d.type));
-    for (const type of currTypes) {
-      if (!prevTypes.has(type)) {
-        const added = (current.details || []).find((d: any) => d.type === type);
-        // type→label変換（なければtypeそのまま）
-        const label = this.salaryTypes.find(t => t.value === type)?.label || type;
-        return `${label}が追加されました（${added.amount?.toLocaleString()}円）`;
-      }
-    }
-    return '内容が更新されました';
-  }
-
   // 全国ドキュメント（prefectures/全国）の情報を取得してコンソールに出力するテスト用メソッド
   async getZenkokuPrefectureTest() {
     const zenkokuDocRef = doc(this.firestore, 'prefectures', '全国');

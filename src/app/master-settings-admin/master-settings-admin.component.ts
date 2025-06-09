@@ -2,10 +2,11 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../shared/services/auth.service';
-import { Firestore, doc, getDoc, updateDoc, collection, query, where, getDocs, orderBy, addDoc } from '@angular/fire/firestore';
+import { Firestore, doc, getDoc, updateDoc, collection, query, where, getDocs, orderBy, addDoc, deleteDoc } from '@angular/fire/firestore';
 import { switchMap } from 'rxjs/operators';
 import { of } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
+import { getAuth, sendPasswordResetEmail } from 'firebase/auth';
 
 interface CompanyInfo {
   company_name: string;
@@ -67,6 +68,11 @@ export class MasterSettingsAdminComponent {
   isEditingCompany: boolean = false;
   isEditingDepartment: { [key: string]: boolean } = {};
 
+  // 認証関連
+  public user$;
+  public isAuthReady$;
+  public employeeInfo: any = null;
+
   // 会社・事業所情報
   companyId: string = '';
   departmentId: string = '';
@@ -115,11 +121,18 @@ export class MasterSettingsAdminComponent {
 
   updatedByNameMap: { [id: string]: string } = {};
 
+  userName: string = '';
+  userEmail: string = '';
+
   constructor(
     private authService: AuthService,
     private firestore: Firestore,
     private http: HttpClient
   ) {
+    // 認証関連の初期化
+    this.user$ = this.authService.user$;
+    this.isAuthReady$ = this.authService.isAuthReady$;
+
     // ログイン中の会社ID・事業所IDを取得
     this.authService.companyId$.subscribe(async companyId => {
       if (companyId) {
@@ -128,6 +141,31 @@ export class MasterSettingsAdminComponent {
         await this.loadDepartmentList();
         await this.loadEmployeeList();
         await this.loadOperationLogs();
+      }
+    });
+
+    // ログインユーザー情報の取得と従業員情報の取得
+    this.user$.subscribe(async (user: any) => {
+      if (user && user.email) {
+        // employeesコレクションから該当するメールアドレスの従業員情報を取得
+        const employeesCol = collection(this.firestore, 'employees');
+        const q = query(employeesCol, where('email', '==', user.email));
+        const snapshot = await getDocs(q);
+        
+        if (!snapshot.empty) {
+          const employeeData = snapshot.docs[0].data();
+          this.employeeInfo = {
+            id: snapshot.docs[0].id,
+            ...employeeData
+          };
+        }
+      }
+    });
+
+    this.user$.subscribe((user: any) => {
+      if (user) {
+        this.userName = (user.displayName || user.last_name_kanji || '') + (user.first_name_kanji || '');
+        this.userEmail = user.email || '';
       }
     });
   }
@@ -292,12 +330,10 @@ export class MasterSettingsAdminComponent {
       this.saveMessage = '権限を更新しました';
 
       // 操作ログを追加
-      // 対象従業員情報を取得
       const employee = this.employeeList.find(e => e.id === employeeId);
       const userName = employee ? `${employee.last_name_kanji}${employee.first_name_kanji}` : '';
       const companyId = employee ? employee.company_id : '';
       const employeeCode = employee ? employee.employee_code : '';
-      // IPアドレス取得
       let ipAddress = '';
       try {
         const res = await fetch('https://api.ipify.org?format=json');
@@ -316,8 +352,11 @@ export class MasterSettingsAdminComponent {
         operation_detail: `権限を${this.getRoleLabel(newRole)}に変更`,
         ip_address: ipAddress,
         status: 'success',
-        timestamp: new Date()
+        timestamp: new Date(),
+        updated_by: this.employeeInfo?.id || ''
       });
+      // 操作ログを再取得して画面に即時反映
+      await this.loadOperationLogs();
     } catch (error) {
       console.error('Error updating employee role:', error);
       this.saveMessage = '権限の更新に失敗しました';
@@ -484,6 +523,31 @@ export class MasterSettingsAdminComponent {
     } catch {
       this.updatedByNameMap[log.updated_by] = '-';
       return '-';
+    }
+  }
+
+  // パスワードリセットメール送信
+  async resetEmployeePassword(email: string) {
+    const auth = getAuth();
+    try {
+      await sendPasswordResetEmail(auth, email);
+      alert('パスワードリセットメールを送信しました。');
+    } catch (error) {
+      alert('パスワードリセットメールの送信に失敗しました。');
+      console.error(error);
+    }
+  }
+
+  async deleteEmployee(employeeId: string) {
+    if (!confirm('本当にこの従業員を削除しますか？')) return;
+    try {
+      const employeeDocRef = doc(this.firestore, 'employees', employeeId);
+      await deleteDoc(employeeDocRef);
+      this.saveMessage = '従業員を削除しました';
+      await this.loadEmployeeList(); // 一覧を再取得
+    } catch (error) {
+      this.saveMessage = '従業員の削除に失敗しました';
+      console.error('Error deleting employee:', error);
     }
   }
 }

@@ -37,6 +37,11 @@ label {
   margin-bottom: 0.2rem;
 }
 
+.required {
+  color: #f44336;
+  margin-left: 0.2rem;
+}
+
 input[type="text"],
 input[type="email"],
 input[type="password"] {

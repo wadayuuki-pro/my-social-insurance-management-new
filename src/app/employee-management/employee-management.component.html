@@ -45,14 +45,14 @@
     <div class="employee-actions-row2">
       <div class="button-group">
         <span class="button-group-label">従業員CSV</span>
-        <button type="button" (click)="onClickImportEmployees()"><span class="material-icons">upload_file</span> インポート</button>
+        <button type="button" (click)="onClickImportEmployees()"><span class="material-icons">download</span> インポート</button>
         <input type="file" #employeesImportInput accept=".csv,.xlsx" style="display:none" (change)="onImportEmployeesFile($event)" />
-        <button type="button" (click)="exportAllEmployeesCSV()"><span class="material-icons">download</span> エクスポート</button>
+        <button type="button" (click)="exportAllEmployeesCSV()"><span class="material-icons">upload_file</span> エクスポート</button>
       </div>
       <div class="button-group button-group-sep">
         <span class="button-group-label">扶養者情報CSV</span>
-        <button type="button" (click)="onClickImportDependents()" style="background:#8e24aa; color:#fff;"><span class="material-icons">upload_file</span> インポート</button>
-        <button type="button" (click)="exportDependentsCSV()" style="background:#8e24aa; color:#fff;"><span class="material-icons">download</span> エクスポート</button>
+        <button type="button" (click)="onClickImportDependents()" style="background:#8e24aa; color:#fff;"><span class="material-icons">download</span> インポート</button>
+        <button type="button" (click)="exportDependentsCSV()" style="background:#8e24aa; color:#fff;"><span class="material-icons">upload_file</span> エクスポート</button>
         <input type="file" #dependentsImportInput accept=".csv,.xlsx" style="display:none" (change)="onImportDependentsFile($event)" />
       </div>
     </div>
@@ -199,7 +199,6 @@
             <th style="min-width: 120px;">勤務開始日</th>
             <th style="min-width: 50px;">健康保険加入状況</th>
             <th style="min-width: 50px;">厚生年金加入状況</th>
-            <th style="min-width: 120px;">保険適用ステータス</th>
             <th style="min-width: 120px;">扶養家族の有無</th>
             <th style="min-width: 100px;">状態</th>
             <th style="min-width: 120px;">最終更新日</th>
@@ -214,23 +213,19 @@
             <td>{{ emp.employment_start_date || '-' }}</td>
             <td>{{ emp.health_insurance_enrolled ? '加入' : '未加入' }}</td>
             <td>{{ emp.pension_insurance_enrolled ? '加入' : '未加入' }}</td>
-            <td>
-              <span class="insurance-status-tag">
-                <!-- 仮のUI。今は全員「判定中」表示。ロジックは後で実装 -->
-                判定中
-              </span>
-            </td>
             <td>{{ emp.has_dependents ? '有' : '無' }}</td>
             <td>{{ emp.status || '在籍中' }}</td>
             <td>{{ emp.updated_at ? (emp.updated_at.toDate() | date:'yyyy/MM/dd') : '-' }}</td>
             <td class="detail-cell">
-              <button (click)="openDetail(emp)">詳細</button>
-              <button (click)="exportEmployeeCSV(emp)" style="margin-left: 0.5rem; background: #4caf50; color: white;">CSV出力</button>
-              <button *ngIf="!emp.uid" (click)="signUpEmployee(emp)" style="background:#ff9800; color:#fff; margin-top:0.2rem;">サインアップ</button>
+              <div style="display: flex; gap: 0.3em; flex-wrap: wrap; align-items: center;">
+                <button (click)="openDetail(emp)">詳細</button>
+                <button (click)="exportEmployeeCSV(emp)" style="background: #4caf50; color: white;">CSV出力</button>
+                <button *ngIf="!emp.uid" (click)="signUpEmployee(emp)" style="background:#ff9800; color:#fff;">サインアップ</button>
+              </div>
             </td>
           </tr>
           <tr *ngIf="filteredEmployees.length === 0">
-            <td colspan="11" style="text-align:center; color:#888;">該当する従業員がいません</td>
+            <td colspan="10" style="text-align:center; color:#888;">該当する従業員がいません</td>
           </tr>
         </tbody>
       </table>
@@ -430,7 +425,7 @@
                     maxlength="15" />
                 </ng-container>
                 <ng-container *ngSwitchDefault>
-                  <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" />
+                  <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" (keydown.enter)="focusNextInput($event)" />
                   <div class="error-message" *ngIf="(field === 'last_name_kana' || field === 'first_name_kana') && newEmployeeForm.get(field)?.errors?.['katakana'] && newEmployeeForm.get(field)?.touched">
                     全角カタカナで入力してください
                   </div>
@@ -523,7 +518,11 @@
                     <input [formControlName]="field" [attr.disabled]="true" />
                   </ng-container>
                   <ng-container *ngSwitchCase="'password'">
-                    <input [formControlName]="field" placeholder="初期パスワードは自動生成" />
+                    <div style="display: flex; flex-direction: column;">
+                      <div style="border: 1px solid #ccc; border-radius: 4px; background: #f5f5f5; padding: 0.5em 0.8em; font-size:1.0em; letter-spacing:0.2em; min-height: 2.5em; width: 550%; box-sizing: border-box; display: flex; align-items: center;">
+                        {{ detailForm.get(field)?.value ? (detailForm.get(field)?.value[0] + '・'.repeat(detailForm.get(field)?.value.length - 1)) : '' }}
+                      </div>
+                    </div>
                   </ng-container>
                   <ng-container *ngSwitchCase="'has_dependents'">
                     <input [value]="detailForm.get(field)?.value ? '有' : '無'" disabled />
@@ -687,7 +686,7 @@
                     </select>
                   </ng-container>
                   <ng-container *ngSwitchDefault>
-                    <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" />
+                    <input [formControlName]="field" [placeholder]="employeeFieldPlaceholders[field] || ''" (keydown.enter)="focusNextInput($event)" />
                     <div class="error-message" *ngIf="(field === 'last_name_kana' || field === 'first_name_kana') && detailForm.get(field)?.errors?.['katakana'] && detailForm.get(field)?.touched">
                       全角カタカナで入力してください
                     </div>
@@ -740,7 +739,7 @@
               </div>
               <div class="employee-detail-modal" *ngIf="showDependentModal">
                 <div class="employee-detail-modal-content" style="max-width:600px;">
-                  <h2>扶養者情報の追加</h2>
+                  <h2>{{ editingDependentIndex !== null ? '扶養者情報の編集' : '扶養者情報の追加' }}</h2>
                   <form [formGroup]="dependentForm" style="display:flex; flex-direction:column; gap:0.7rem;">
                     <div class="detail-row">
                       <label>氏名</label>
@@ -971,12 +970,12 @@
           </div>
           <div class="detail-row">
             <label>マイナンバー</label>
-            <input type="text" formControlName="my_number" placeholder="12桁の数字" maxlength="12" />
+            <input type="text" formControlName="my_number" placeholder="12桁の数字" maxlength="12" pattern="[0-9]*" inputmode="numeric" />
             <div class="error-message" *ngIf="myNumberEditForm.get('my_number')?.errors?.['required'] && myNumberEditForm.get('my_number')?.touched">
               マイナンバーは必須です
             </div>
             <div class="error-message" *ngIf="myNumberEditForm.get('my_number')?.errors?.['pattern'] && myNumberEditForm.get('my_number')?.touched">
-              12桁の数字で入力してください
+              マイナンバーは半角数字12桁で入力してください
             </div>
           </div>
           <div class="detail-row">
@@ -1121,7 +1120,7 @@
           <li>
             <b>産休・育休中は、一定の条件を満たすと社会保険料（健康保険・厚生年金保険）が免除されます。</b><br>
             <ul style="margin: 0.3em 0 0.3em 1.2em; font-size: 0.97em;">
-              <li>産前産後休業期間中（出産予定日以前42日～出産後56日）は、申請により保険料が免除されます。</li>
+              <li>産前産後休業期間中（出産予定日以前42日（※多胎妊娠の場合は98日）～出産後56日）は、申請により保険料が免除されます。</li>
               <li>育児休業期間中（原則1歳まで、一定条件で最長2歳まで）は、申請により保険料が免除されます。</li>
               <li>免除期間中も被保険者資格は継続し、将来の年金額にも影響しません。</li>
               <li>免除を受けるには、事業主を通じて「産前産後休業取得者申出書」「育児休業取得者申出書」等の提出が必要です。</li>
@@ -1130,7 +1129,7 @@
           </li>
           <li>
             <b>実際の雇用契約や勤務実態に基づきます。</b><br>
-            システム上の判定結果と実際の加入義務が異なる場合があるため、最終的な判断はご自身でご確認ください。
+            システム上の判定結果と実際の加入状況が異なる場合があるため、ご自身でご確認ください。
           </li>
         </ul>
       </div>

@@ -1,6 +1,6 @@
 import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Auth, createUserWithEmailAndPassword } from '@angular/fire/auth';
+import { Auth, createUserWithEmailAndPassword, getAuth, sendPasswordResetEmail } from '@angular/fire/auth';
 import { Firestore, collection, query, where, getDocs, doc, updateDoc, addDoc, getDoc, setDoc, serverTimestamp } from '@angular/fire/firestore';
 import { FormBuilder, FormGroup, ReactiveFormsModule, FormArray, Validators, AbstractControl, ValidatorFn } from '@angular/forms';
 import { AddMemberButtonComponent } from '../shared/components/add-member-button/add-member-button.component';
@@ -274,7 +274,8 @@ export class EmployeeManagementComponent implements OnInit {
   // 特記事項の選択肢を追加
   remarksOptions: string[] = [
     'なし',
-    '副業先'
+    '副業先',
+    '障害者'
   ];
 
   getRequiredActionsSummary(emp: any): string {
@@ -773,6 +774,26 @@ export class EmployeeManagementComponent implements OnInit {
       dependents: this.fb.array([])
     });
 
+    // 扶養者情報を設定
+    const dependentsArray = this.detailForm.get('dependents') as FormArray;
+    if (emp.dependents && Array.isArray(emp.dependents)) {
+      emp.dependents.forEach((dep: any) => {
+        dependentsArray.push(this.fb.group({
+          name: [dep.name],
+          relationship: [dep.relationship],
+          birthdate: [dep.birthdate],
+          gender: [dep.gender],
+          cohabitation: [dep.cohabitation],
+          annualIncome: [dep.annualIncome],
+          employmentStatus: [dep.employmentStatus],
+          fuyouStartDate: [dep.fuyouStartDate],
+          isCurrentlyDependent: [dep.isCurrentlyDependent],
+          note: [dep.note],
+          myNumber: [dep.myNumber]
+        }));
+      });
+    }
+
     // 編集不可のフィールドを無効化
     this.detailForm.get('company_id')?.disable();
     this.detailForm.get('role')?.disable();
@@ -1084,7 +1105,7 @@ export class EmployeeManagementComponent implements OnInit {
 
     // 扶養者情報を除外した基本情報のカラム
     const baseFields = this.employeeFieldOrder.filter(f => 
-      !['company_id','employee_code', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at'].includes(f)
+      !['company_id', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at'].includes(f)
     );
 
     // ヘッダー行の作成
@@ -1125,7 +1146,7 @@ export class EmployeeManagementComponent implements OnInit {
   exportEmployeeCSV(employee: any) {
     // 扶養者情報を除外した基本情報のカラム
     const baseFields = this.employeeFieldOrder.filter(f => 
-      !['company_id','employee_code', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at'].includes(f)
+      !['company_id', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at'].includes(f)
     );
 
     // ヘッダー行の作成
@@ -1320,7 +1341,10 @@ export class EmployeeManagementComponent implements OnInit {
         const ref = doc(this.firestore, 'employees', snapshot.docs[0].id);
         await updateDoc(ref, { uid: userCredential.user.uid });
       }
-      alert('サインアップが完了しました');
+      // パスワードリセットメールを送信
+      const auth = getAuth();
+      await sendPasswordResetEmail(auth, employee.email);
+      alert('サインアップが完了しました。パスワード設定用メールを送信しました。');
       await this.loadEmployees();
     } catch (error: any) {
       alert('サインアップに失敗しました: ' + (error.message || error));
@@ -1656,16 +1680,41 @@ export class EmployeeManagementComponent implements OnInit {
     }
     // 期待カラム名
     const excludeFields = ['company_id', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at'];
-    const expectedHeaders = this.employeeFieldOrder
-      .filter(f => !excludeFields.includes(f))
-      .map(f => this.employeeFieldLabels[f] || f);
+    const expectedHeaders = [
+      '社員ID',
+      '氏名',
+      '扶養者氏名',
+      '続柄',
+      '生年月日',
+      '性別',
+      '同居',
+      '年収',
+      '就業状況',
+      '扶養開始日',
+      '現在も扶養中',
+      '備考'
+    ];
     // 1行目を取得
     const lines = text.split(/\r?\n/).filter((line: string) => line.trim() !== '');
     const headerLine = lines[0];
     const headers = headerLine.replace(/^\uFEFF/, '').split(',').map((h: string) => h.replace(/"/g, '').trim());
     // 厳密一致チェック
-    if (headers.length !== expectedHeaders.length || !headers.every((h: string, i: number) => h === expectedHeaders[i])) {
-      alert('インポートできません：列名や順番が正しくありません。');
+    if (headers.length !== expectedHeaders.length) {
+      alert(
+        `インポートできません：列数が違います。\n期待される列数: ${expectedHeaders.length}\nファイルの列数: ${headers.length}\n\n期待される列名:\n${expectedHeaders.join(', ')}\n\nファイルの列名:\n${headers.join(', ')}`
+      );
+      return;
+    }
+    let mismatch = '';
+    headers.forEach((h, i) => {
+      if (h !== expectedHeaders[i]) {
+        mismatch += `${i + 1}列目（期待: '${expectedHeaders[i]}', 実際: '${h}'）\n`;
+      }
+    });
+    if (mismatch) {
+      alert(
+        `インポートできません：列名や順番が正しくありません。\n違い:\n${mismatch}\n\n期待される列名:\n${expectedHeaders.join(', ')}\n\nファイルの列名:\n${headers.join(', ')}`
+      );
       return;
     }
     // 制御文字や不正な文字チェック（簡易）
@@ -1757,6 +1806,26 @@ export class EmployeeManagementComponent implements OnInit {
     const lines = text.split(/\r?\n/).filter((line: string) => line.trim() !== '');
     const headerLine = lines[0];
     const headers = headerLine.replace(/^\uFEFF/, '').split(',').map((h: string) => h.replace(/"/g, '').trim());
+
+    const employeeCodeSet = new Set<string>();
+const duplicateCodes: string[] = [];
+for (let i = 1; i < lines.length; i++) {
+  const row = lines[i].split(',').map((v: string) => v.replace(/"/g, '').trim());
+  if (row.length !== expectedHeaders.length) continue;
+  const employee_code = row[1];
+  if (!employee_code) continue;
+  if (employeeCodeSet.has(employee_code)) {
+    duplicateCodes.push(employee_code);
+  } else {
+    employeeCodeSet.add(employee_code);
+  }
+}
+
+if (duplicateCodes.length > 0) {
+  alert(`インポートできません：同じ社員IDがファイル内に複数存在します。\n重複している社員ID: ${[...new Set(duplicateCodes)].join(', ')}`);
+  return;
+}
+
     if (headers.length !== expectedHeaders.length || !headers.every((h: string, i: number) => h === expectedHeaders[i])) {
       alert('インポートできません：列名や順番が正しくありません。');
       return;
@@ -1786,52 +1855,41 @@ export class EmployeeManagementComponent implements OnInit {
       // Firestoreで従業員を検索
       try {
         const employeesCol = collection(this.firestore, 'employees');
-        const q = query(employeesCol, where('company_id', '==', this.companyId));
+        const q = query(
+          employeesCol,
+          where('company_id', '==', this.companyId),
+          where('employee_code', '==', row[1]) // 社員IDで絞り込む
+        );
         const snapshot = await getDocs(q);
 
-        // 社員IDの自動生成
-        let maxEmployeeCode = 0;
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          if (data['employee_code']) {
-            const code = parseInt(data['employee_code']);
-            if (!isNaN(code) && code > maxEmployeeCode) {
-              maxEmployeeCode = code;
-            }
-          }
-        });
-        const newEmployeeCode = String(maxEmployeeCode + 1).padStart(6, '0');
-
+        // employeeFieldOrderのうち、インポート対象のフィールドのみを使ってemployeeDataを作成
+        const importFields = this.employeeFieldOrder.filter(f =>
+          !['company_id', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at'].includes(f)
+        );
         const employeeData: any = {
           company_id: this.companyId,
-          employee_code: newEmployeeCode,
-          department_id: row[0],
-          last_name_kanji: row[2],
-          first_name_kanji: row[3],
-          last_name_kana: row[4],
-          first_name_kana: row[5],
-          date_of_birth: row[6],
-          gender: row[7],
-          nationality: row[8],
-          postal_code: row[9],
-          address: row[10],
-          phone_number: row[11],
-          email: row[12],
-          employment_type: row[13],
-          employment_start_date: row[14],
-          employment_end_date: row[15],
-          status: row[16],
-          department: row[17],
-          work_category: row[18],
-          health_insurance_enrolled: row[19] === '加入',
-          pension_insurance_enrolled: row[20] === '加入',
-          health_insurance_number: health_insurance_number,
-          pension_number: pension_number,
-          has_dependents: row[23] === '有',
-          is_dependent: row[24] === 'はい',
-          remarks: row[25],
           updated_at: new Date()
         };
+        importFields.forEach((f, idx) => {
+          if (f === 'has_dependents') {
+            employeeData[f] = row[idx] === '有';
+          } else if (f === 'health_insurance_enrolled' || f === 'pension_insurance_enrolled') {
+            employeeData[f] = row[idx] === '加入';
+          } else if (f === 'is_dependent') {
+            employeeData[f] = row[idx] === 'はい';
+          } else {
+            employeeData[f] = row[idx];
+          }
+        });
+        // 旧ロジックのpension_number, health_insurance_numberの指数表記変換も反映
+        let pension_number = row[22];
+        let health_insurance_number = row[21];
+        if (/^\d+(\.\d+)?e[\+\-]?\d+$/i.test(pension_number)) {
+          employeeData['pension_number'] = String(Number(pension_number));
+        }
+        if (/^\d+(\.\d+)?e[\+\-]?\d+$/i.test(health_insurance_number)) {
+          employeeData['health_insurance_number'] = String(Number(health_insurance_number));
+        }
         if (!snapshot.empty) {
           // 既存従業員を上書き
           const ref = doc(this.firestore, 'employees', snapshot.docs[0].id);
@@ -1849,6 +1907,8 @@ export class EmployeeManagementComponent implements OnInit {
           employeeData.company_id = this.companyId;
           employeeData.created_at = new Date();
           employeeData.updated_at = new Date();
+          // 新規追加時のみパスワードを社員IDと同じ値で保存
+          employeeData.password = employeeData.employee_code;
           await addDoc(employeesCol, employeeData);
         }
       } catch (e) {
@@ -1988,7 +2048,8 @@ export class EmployeeManagementComponent implements OnInit {
         });
 
         // 一覧を更新
-        await this.loadOfficeEmployees(this.selectedOfficeId);
+        this.officeEmployees = await this.loadOfficeEmployees(this.selectedOfficeId);
+        this.filteredMyNumberEmployees = [...this.officeEmployees];
         this.closeMyNumberEdit();
       } catch (error) {
         console.error('マイナンバーの保存に失敗しました:', error);
@@ -3070,6 +3131,24 @@ export class EmployeeManagementComponent implements OnInit {
 
   closeDependentInfo() {
     this.showDependentInfoModal = false;
+  }
+
+  // エンターキーで次の入力欄にフォーカスを移動
+  focusNextInput(event: Event) {
+    // KeyboardEvent型かどうかを判定
+    if (!(event instanceof KeyboardEvent)) return;
+    const form = (event.target as HTMLElement).closest('form');
+    if (!form) return;
+    const elements = Array.from(form.querySelectorAll('input, select, textarea'))
+      .filter(el => {
+        const htmlEl = el as HTMLElement;
+        return !(el as HTMLInputElement).disabled && el.getAttribute('tabindex') !== '-1' && htmlEl.offsetParent !== null;
+      });
+    const index = elements.indexOf(event.target as HTMLElement);
+    if (index > -1 && index < elements.length - 1) {
+      (elements[index + 1] as HTMLElement).focus();
+      event.preventDefault();
+    }
   }
 }
 

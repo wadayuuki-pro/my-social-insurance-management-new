@@ -1,6 +1,22 @@
 <div class="dashboard-container">
   <h1>社会保険管理システム</h1>
-  <p class="subtitle">各種業務メニューを選択してください</p>
+  <div class="dashboard-notice-box">
+    <div class="notice-header">
+      <span class="notice-icon">📢</span>
+      <span class="notice-title">お知らせ</span>
+    </div>
+    <div *ngIf="gradeNotices.length > 0">
+      <ul class="notice-list">
+        <li *ngFor="let notice of gradeNotices">
+          <span class="badge badge-grade">等級変動</span>
+          <span class="notice-message">{{ notice }}</span>
+        </li>
+      </ul>
+    </div>
+    <div *ngIf="gradeNotices.length === 0" class="notice-empty">
+      現在お知らせはありません。
+    </div>
+  </div>
   <div *ngIf="errorMessage" class="error-message" style="background: #ffebee; color: #c62828; padding: 1em; border-radius: 8px; margin-bottom: 1.5em; font-weight: bold; text-align: center;">
     {{ errorMessage }}
   </div>
@@ -9,7 +25,6 @@
     <a routerLink="/employee-management" class="dashboard-card">従業員管理</a>
     <a routerLink="/payroll-management" class="dashboard-card">給与情報管理</a>
     <a routerLink="/insurance-premium-calculation" class="dashboard-card">保険料管理</a>
-    <a routerLink="/insurance-procedures" class="dashboard-card">保険手続き</a>
     <a routerLink="/application-approval" class="dashboard-card">申請・承認</a>
     <a routerLink="/master-settings" class="dashboard-card"
        [ngClass]="{'dashboard-card-disabled': !isAdmin}"
@@ -19,7 +34,7 @@
     </a>
     <a routerLink="/analysis-report" class="dashboard-card">分析・レポート</a>
     <a routerLink="/support-faq" class="dashboard-card">サポート・FAQ</a>
-    <a routerLink="/vendor-page" class="dashboard-card vendor">ベンダー専用ページ</a>
+    <a *ngIf="isVendor" routerLink="/vendor-page" class="dashboard-card vendor">ベンダー専用ページ</a>
   </div>
   <div class="dashboard-user-info" style="position: absolute; top: 1.2rem; right: 2.5rem; background: #e3f2fd; color: #1976d2; border-radius: 8px; padding: 0.7rem 1.2rem; font-size: 1rem; font-weight: 500; box-shadow: 0 2px 8px rgba(25, 118, 210, 0.08);">
     <ng-container *ngIf="isAuthReady$ | async as isReady">

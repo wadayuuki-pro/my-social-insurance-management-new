@@ -200,34 +200,34 @@
 
   <!-- CSVファイルインポート/エクスポート -->
   <div *ngIf="activeTab === 'csv'" class="tab-content">
-    <h2>CSVファイルインポート/エクスポート</h2>
-    <div class="import-section">
-      <h3>CSVファイルの操作</h3>
-      <div class="file-input-container">
-        <label for="csvFile" class="file-label file-label-button">
-          <mat-icon>upload_file</mat-icon>
-          <span class="file-label-text">CSVファイルを選択</span>
-          <input type="file" id="csvFile" accept=".csv,.xlsx" (change)="onCSVFileChange($event)">
-        </label>
-        <div class="selected-file-name" *ngIf="selectedCSVFile">
-          選択中: {{ selectedCSVFile.name }}
-        </div>
-        <div class="file-input-info">
-          <p>・CSVファイルを選択してください。</p>
-        </div>
+    <div class="csv-card">
+      <div class="csv-header">
+        <mat-icon class="csv-main-icon">file_upload</mat-icon>
+        <span class="csv-title">CSVファイルインポート/エクスポート</span>
       </div>
-      <div class="button-row" style="margin-top: 1.5em;">
-        <button class="btn btn-primary" (click)="importSalariesFromCSV()" [disabled]="!selectedCSVFile">
-          <mat-icon>upload_file</mat-icon>
-          インポート
-        </button>
-        <button class="btn btn-secondary" (click)="exportSalariesToCSV()">
-          <mat-icon>download</mat-icon>
-          エクスポート
-        </button>
-      </div>
-      <div *ngIf="csvImportMessage" [ngClass]="{'success-message': csvImportSuccess, 'error-message': !csvImportSuccess}" style="margin-top: 1.5em;">
-        {{ csvImportMessage }}
+      <div class="csv-body">
+        <div class="csv-file-row">
+          <label for="csvFile" class="csv-file-label">
+            <mat-icon>attach_file</mat-icon>
+            <span>CSV選択</span>
+            <input type="file" id="csvFile" accept=".csv,.xlsx" (change)="onCSVFileChange($event)">
+          </label>
+          <button class="csv-import-btn" (click)="importSalariesFromCSV()" [disabled]="!selectedCSVFile">
+            <mat-icon>file_upload</mat-icon>
+            インポート
+          </button>
+          <span class="csv-selected-file" *ngIf="selectedCSVFile">{{ selectedCSVFile.name }}</span>
+        </div>
+        <div class="csv-file-info">・CSVファイルを選択してください。</div>
+        <div class="csv-btn-row">
+          <button class="csv-export-btn" (click)="exportSalariesToCSV()">
+            <mat-icon>file_download</mat-icon>
+            エクスポート
+          </button>
+        </div>
+        <div *ngIf="csvImportMessage" [ngClass]="{'csv-success': csvImportSuccess, 'csv-error': !csvImportSuccess}" class="csv-status-msg">
+          {{ csvImportMessage }}
+        </div>
       </div>
     </div>
   </div>

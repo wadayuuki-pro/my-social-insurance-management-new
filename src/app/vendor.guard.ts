@@ -1,14 +1,8 @@
 import { CanActivateFn, Router } from '@angular/router';
 import { inject } from '@angular/core';
 import { Auth, User } from '@angular/fire/auth';
-import { environment } from '../environments/environment';
 
 export const vendorGuard: CanActivateFn = async (route, state) => {
-  if (!environment.production) {
-    // 開発環境では誰でもアクセス可能
-    return true;
-  }
-
   const auth = inject(Auth);
   const router = inject(Router);
   let currentUser: User | null = auth.currentUser;
@@ -22,11 +16,10 @@ export const vendorGuard: CanActivateFn = async (route, state) => {
     });
   }
 
-  if (currentUser && currentUser.email === 'wadayuuki30@gmail.com') {
+  if (!currentUser || !currentUser.email) {
+    // ユーザーがundefinedまたはnullの場合のみアクセス許可
     return true;
-  } else {
-    // アクセス不可の場合はログインページへリダイレクト
-    router.navigate(['/login']);
-    return false;
   }
+  // それ以外はダッシュボードにリダイレクト
+  return router.createUrlTree(['/dashboard'], { queryParams: { error: 'forbidden' } });
 };
