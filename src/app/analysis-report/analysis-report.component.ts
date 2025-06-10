@@ -2,7 +2,7 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../shared/services/auth.service';
-import { Firestore, collection, query, where, getDocs } from '@angular/fire/firestore';
+import { Firestore, collection, query, where, getDocs, getDoc, doc } from '@angular/fire/firestore';
 import { switchMap, map, from, of } from 'rxjs';
 
 @Component({
@@ -18,6 +18,8 @@ export class AnalysisReportComponent {
   companyId: string = '';
   departmentList: { department_id: string; department_name: string }[] = [];
   selectedDepartmentId: string = '';
+  selectedYearMonth: string = '';
+  yearMonthOptions: string[] = [];
   employeeCount: number = 0;
   activeCount: number = 0;
   retiredCount: number = 0;
@@ -118,6 +120,7 @@ export class AnalysisReportComponent {
       if (companyId) {
         this.companyId = companyId;
         await this.loadDepartmentList();
+        await this.loadYearMonthOptions();
         await this.loadMonthlyEnrollmentData();
         await this.loadMonthlySalaryAndBonusData();
         await this.loadBranchInsuranceTotals();
@@ -142,9 +145,25 @@ export class AnalysisReportComponent {
     }
   }
 
+  async loadYearMonthOptions() {
+    if (!this.companyId || !this.selectedDepartmentId) return;
+    
+    const burdenRatiosCol = collection(this.firestore, 'departments', this.selectedDepartmentId, 'burden_ratios');
+    const snapshot = await getDocs(burdenRatiosCol);
+    
+    this.yearMonthOptions = snapshot.docs
+      .map(doc => doc.id)
+      .sort((a, b) => b.localeCompare(a)); // 降順でソート
+    
+    if (this.yearMonthOptions.length > 0) {
+      this.selectedYearMonth = this.yearMonthOptions[0];
+      await this.loadEmployeeCount();
+    }
+  }
+
   async onDepartmentChange(deptId: string) {
     this.selectedDepartmentId = deptId;
-    await this.loadEmployeeCount();
+    await this.loadYearMonthOptions();
     await this.loadEmployeeStatusCount();
     await this.loadMonthlyEnrollmentData();
     await this.loadMonthlySalaryAndBonusData();
@@ -154,8 +173,14 @@ export class AnalysisReportComponent {
     this.renderCharts();
   }
 
+  // 対象年月変更時の処理を追加
+  async onYearMonthChange(yearMonth: string) {
+    this.selectedYearMonth = yearMonth;
+    await this.loadEmployeeCount();
+  }
+
   async loadEmployeeCount() {
-    if (!this.companyId || !this.selectedDepartmentId) {
+    if (!this.companyId || !this.selectedDepartmentId || !this.selectedYearMonth) {
       this.employeeCount = 0;
       this.activeCount = 0;
       this.retiredCount = 0;
@@ -171,12 +196,14 @@ export class AnalysisReportComponent {
       this.kaigoEmployeeTotal = 0;
       return;
     }
+
     const employeesCol = collection(this.firestore, 'employees');
     const q = query(employeesCol, where('company_id', '==', this.companyId), where('department_id', '==', this.selectedDepartmentId));
     const snapshot = await getDocs(q);
     this.employeeCount = snapshot.size;
     let active = 0;
     let retired = 0;
+
     // 保険料詳細の初期化
     this.ippanCompanyTotal = 0;
     this.ippanEmployeeTotal = 0;
@@ -187,7 +214,17 @@ export class AnalysisReportComponent {
     this.kaigoCompanyTotal = 0;
     this.kaigoEmployeeTotal = 0;
 
-    // 各従業員ごとにinsurance_premiumsサブコレクションから保険料を取得
+    // 健康保険料と厚生年金保険料をburden_ratiosから取得
+    const burdenRatiosDoc = await getDoc(doc(this.firestore, 'departments', this.selectedDepartmentId, 'burden_ratios', this.selectedYearMonth));
+    if (burdenRatiosDoc.exists()) {
+      const data = burdenRatiosDoc.data();
+      this.ippanCompanyTotal = data['health_insurance_company_burden'] || 0;
+      this.ippanEmployeeTotal = data['health_insurance_employee_burden'] || 0;
+      this.kouseiCompanyTotal = data['pension_insurance_company_burden'] || 0;
+      this.kouseiEmployeeTotal = data['pension_insurance_employee_burden'] || 0;
+    }
+
+    // 各従業員ごとにinsurance_premiumsサブコレクションから介護保険料を取得
     for (const doc of snapshot.docs) {
       const status = (doc.data()['status'] || '').trim();
       if (status === '在籍中') {
@@ -195,37 +232,36 @@ export class AnalysisReportComponent {
       } else if (status === '退職' || status === '退職済み') {
         retired++;
       }
-      // insurance_premiumsサブコレクションを全件取得
+
+      // insurance_premiumsサブコレクションを取得
       const empId = doc.id;
       const premiumsCol = collection(this.firestore, 'employees', empId, 'insurance_premiums');
-      const premiumsSnap = await getDocs(premiumsCol);
-      for (const d of premiumsSnap.docs) {
-        const data = d.data() as any;
-        if (data && data.premiums) {
-          // 健康保険料（ippan）の計算 - is_initialがtrueの場合のみ
-          if (data.premiums.ippan && data.premiums.ippan.is_initial === true) {
-            const full = Number(data.premiums.ippan.full || 0);
-            const half = Number(data.premiums.ippan.half || 0);
-            this.ippanEmployeeTotal += half;
-            this.ippanCompanyTotal += full - half;
-          }
-          // 介護保険料（kaigo）の計算 - is_applicableがtrueの場合のみ
-          if (data.premiums.kaigo && data.premiums.kaigo.is_applicable === true) {
-            const full = Number(data.premiums.kaigo.full || 0);
-            const half = Number(data.premiums.kaigo.half || 0);
-            this.kaigoEmployeeTotal += half;
-            this.kaigoCompanyTotal += full - half;
-          }
-          // 厚生年金保険料（kousei）の計算 - is_applicableがtrueの場合のみ
-          if (data.premiums.kousei && data.premiums.kousei.is_applicable === true) {
-            const full = Number(data.premiums.kousei.full || 0);
-            const half = Number(data.premiums.kousei.half || 0);
-            this.kouseiEmployeeTotal += half;
-            this.kouseiCompanyTotal += full - half;
-          }
+      
+      // 対象年月のドキュメントを取得（YYYYMM形式とYYYY-MM形式の両方）
+      const targetYearMonth = this.selectedYearMonth;
+      const targetYearMonthWithHyphen = targetYearMonth.replace(/(\d{4})(\d{2})/, '$1-$2');
+      
+      const q1 = query(premiumsCol, where('year_month', '==', targetYearMonth));
+      const q2 = query(premiumsCol, where('year_month', '==', targetYearMonthWithHyphen));
+      
+      const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+      
+      // 両方のドキュメントを処理
+      const processPremiumDoc = (premiumDoc: any) => {
+        const data = premiumDoc.data();
+        if (data && data.premiums && data.premiums.kaigo && data.premiums.kaigo.is_applicable === true) {
+          const full = Number(data.premiums.kaigo.full || 0);
+          const half = Number(data.premiums.kaigo.half || 0);
+          this.kaigoEmployeeTotal += half;
+          this.kaigoCompanyTotal += full - half;
         }
-      }
+      };
+
+      // 両方のクエリ結果を処理
+      snap1.docs.forEach(processPremiumDoc);
+      snap2.docs.forEach(processPremiumDoc);
     }
+
     this.activeCount = active;
     this.retiredCount = retired;
     this.insuranceTotal = this.totalBurden;

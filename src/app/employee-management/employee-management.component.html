@@ -311,11 +311,11 @@
                     <option value="退職">退職</option>
                   </select>
                   <div class="detail-row" *ngIf="showNewLeaveDates">
-                    <label>休職・産休・育休 開始日</label>
+                    <label>出産予定日・育休 開始日</label>
                     <input type="date" formControlName="leave_start_date" />
                   </div>
                   <div class="detail-row" *ngIf="showNewLeaveDates">
-                    <label>休職・産休・育休 終了日</label>
+                    <label>育休 終了日</label>
                     <input type="date" formControlName="leave_end_date" />
                   </div>
                 </ng-container>
@@ -572,11 +572,11 @@
                       <option value="退職">退職</option>
                     </select>
                     <div class="detail-row" *ngIf="showLeaveDates">
-                      <label>休職・産休・育休 開始日</label>
+                      <label>出産予定日（産休）・育休 開始日（育休）</label>
                       <input type="date" formControlName="leave_start_date" />
                     </div>
                     <div class="detail-row" *ngIf="showLeaveDates">
-                      <label>休職・産休・育休 終了日</label>
+                      <label>育休 終了日</label>
                       <input type="date" formControlName="leave_end_date" />
                     </div>
                   </ng-container>
@@ -1105,6 +1105,10 @@
       <div class="judgement-info" style="margin-top:2em;">
         <h3>判定について（主な判定基準）</h3>
         <ul style="margin-left:1.2em;">
+          <li>
+            <b>従業員情報の雇用形態を入力してください。</b><br>
+            なにも入力されていない場合は保険適用外になります。
+          </li>
           <li>
             <b>短時間労働者（週20時間未満など）は原則として社会保険の適用外です。</b><br>
             ただし、特定適用事業所（従業員51人以上など）では、週20時間以上かつ月収8.8万円以上などの条件を満たすと適用対象となります。

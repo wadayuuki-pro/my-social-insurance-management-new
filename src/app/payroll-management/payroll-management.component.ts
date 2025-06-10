@@ -988,13 +988,26 @@ export class PayrollManagementComponent implements OnInit {
         // その他手当（基本・残業・通勤・賞与以外）
         const excludeTypes = ['base', 'overtime', 'commuting', 'bonus', '基本給', '残業手当', '通勤手当', '賞与'];
         details.filter((d: any) => !excludeTypes.includes(d.type)).forEach((other: any) => {
+          // --- ここから項目名変換ロジック ---
+          let itemLabel = other.type;
+          // baseSalaryTypesのvalue→label
+          const baseType = this.baseSalaryTypes.find(t => t.value === other.type);
+          if (baseType) {
+            itemLabel = baseType.label;
+          } else {
+            // customAllowancesのvalue→label
+            const custom = this.customAllowances.find(a => a.value === other.type);
+            if (custom) {
+              itemLabel = custom.label;
+            }
+          }
           allRows.push({
             companyId: emp.company_id,
             departmentId,
             employee_code: emp.employee_code || emp.id,
             name: `${emp.last_name_kanji || ''}${emp.first_name_kanji || ''}`.trim(),
             year_month: yearMonth,
-            item: other.type,
+            item: itemLabel,
             amount: other.amount || 0
           });
         });
@@ -1105,10 +1118,10 @@ export class PayrollManagementComponent implements OnInit {
       }
       await this.loadCustomAllowances();
       this.closeCustomAllowanceModal();
-        } catch (error) {
+    } catch (error) {
       console.error('Error saving custom allowance:', error);
       alert('手当区分の保存に失敗しました。');
-        }
+    }
   }
 
   // カスタム手当の削除
@@ -1129,7 +1142,7 @@ export class PayrollManagementComponent implements OnInit {
   // カスタム手当一覧モーダルを閉じる
   closeCustomAllowanceListModal() {
     this.showCustomAllowanceListModal = false;
-    }
+  }
 
   onCSVFileChange(event: Event) {
     const input = event.target as HTMLInputElement;

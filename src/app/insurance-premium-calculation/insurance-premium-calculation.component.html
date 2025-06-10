@@ -23,8 +23,7 @@
   <h1>保険料管理</h1>
   <div class="tab-header">
     <button [class.active]="selectedTab === 'calculation'" (click)="selectTab('calculation')">💼 保険料計算</button>
-    <button [class.active]="selectedTab === 'ratio'" (click)="selectTab('ratio')">⚖️ 負担比率</button>
-    <button [class.active]="selectedTab === 'master'" (click)="selectTab('master')">📋 マスタ管理</button>
+    <button [class.active]="selectedTab === 'ratio'" (click)="selectTab('ratio')">⚖️ 負担比率</button>    
     <button [class.active]="selectedTab === 'history'" (click)="selectTab('history')">📜 履歴閲覧</button>
   </div>
 
@@ -362,21 +361,40 @@
         </div>
         <div class="table-responsive" *ngIf="employeePremiumSummaries.length > 0">
           <div style="margin-bottom: 1.5rem;">
-            <div class="burden-summary-cards" style="display: flex; gap: 1.5rem; justify-content: center;">
+            <div class="burden-summary-cards" style="display: flex; gap: 1.5rem; justify-content: center; flex-wrap: wrap;">
+              <!-- 健康保険料の会社負担 -->
               <div style="background: #e3f2fd; color: #1976d2; border-radius: 1.2em; padding: 1.2em 2.2em; min-width: 200px; box-shadow: 0 2px 8px rgba(25, 118, 210, 0.08); text-align: center;">
-                <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 0.5em;">会社負担合計</div>
-                <div style="font-size: 2em; font-weight: bold;">{{ totalCompanyBurden.toNumber() | number }}
-                  <span *ngIf="totalCompanyBurdenHasFraction" style="font-size: 0.7em; color: #888;">（{{ totalCompanyBurdenFloor | number }}）</span>
+                <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 0.5em;">健康保険料（会社負担）</div>
+                <div style="font-size: 2em; font-weight: bold;">{{ (totalCompanyBurden.minus(totalKouseiCompanyBurden)).toNumber() | number }}
+                  <span *ngIf="hasFraction(totalCompanyBurden.minus(totalKouseiCompanyBurden))" style="font-size: 0.7em; color: #888;">（{{ (totalCompanyBurden.minus(totalKouseiCompanyBurden)).floor().toNumber() | number }}）</span>
                   <span style="font-size: 0.7em;">円</span>
                 </div>
               </div>
+              <!-- 健康保険料の従業員負担 -->
               <div style="background: #fff3e0; color: #fb8c00; border-radius: 1.2em; padding: 1.2em 2.2em; min-width: 200px; box-shadow: 0 2px 8px rgba(251, 140, 0, 0.08); text-align: center;">
-                <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 0.5em;">従業員負担合計</div>
-                <div style="font-size: 2em; font-weight: bold;">{{ totalEmployeeBurden.toNumber() | number }}
-                  <span *ngIf="totalEmployeeBurdenHasFraction" style="font-size: 0.7em; color: #888;">（{{ totalEmployeeBurdenFloor | number }}）</span>
+                <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 0.5em;">健康保険料（従業員負担）</div>
+                <div style="font-size: 2em; font-weight: bold;">{{ (totalEmployeeBurden.minus(totalKouseiEmployeeBurden)).toNumber() | number }}
+                  <span *ngIf="hasFraction(totalEmployeeBurden.minus(totalKouseiEmployeeBurden))" style="font-size: 0.7em; color: #888;">（{{ (totalEmployeeBurden.minus(totalKouseiEmployeeBurden)).floor().toNumber() | number }}）</span>
                   <span style="font-size: 0.7em;">円</span>
                 </div>
               </div>
+              <!-- 厚生年金保険料の会社負担 -->
+              <div style="background: #e3f2fd; color: #1976d2; border-radius: 1.2em; padding: 1.2em 2.2em; min-width: 200px; box-shadow: 0 2px 8px rgba(25, 118, 210, 0.08); text-align: center;">
+                <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 0.5em;">厚生年金保険料（会社負担）</div>
+                <div style="font-size: 2em; font-weight: bold;">{{ totalKouseiCompanyBurden.toNumber() | number }}
+                  <span *ngIf="hasFraction(totalKouseiCompanyBurden)" style="font-size: 0.7em; color: #888;">（{{ totalKouseiCompanyBurden.floor().toNumber() | number }}）</span>
+                  <span style="font-size: 0.7em;">円</span>
+                </div>
+              </div>
+              <!-- 厚生年金保険料の従業員負担 -->
+              <div style="background: #fff3e0; color: #fb8c00; border-radius: 1.2em; padding: 1.2em 2.2em; min-width: 200px; box-shadow: 0 2px 8px rgba(251, 140, 0, 0.08); text-align: center;">
+                <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 0.5em;">厚生年金保険料（従業員負担）</div>
+                <div style="font-size: 2em; font-weight: bold;">{{ totalKouseiEmployeeBurden.toNumber() | number }}
+                  <span *ngIf="hasFraction(totalKouseiEmployeeBurden)" style="font-size: 0.7em; color: #888;">（{{ totalKouseiEmployeeBurden.floor().toNumber() | number }}）</span>
+                  <span style="font-size: 0.7em;">円</span>
+                </div>
+              </div>
+              <!-- 総合計 -->
               <div style="background: #e8f5e9; color: #388e3c; border-radius: 1.2em; padding: 1.2em 2.2em; min-width: 200px; box-shadow: 0 2px 8px rgba(56, 142, 60, 0.08); text-align: center;">
                 <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 0.5em;">総合計</div>
                 <div style="font-size: 2em; font-weight: bold;">{{ totalBurden.toNumber() | number }}
@@ -390,190 +408,44 @@
                 <mat-icon>save</mat-icon>
                 負担比率集計を保存
               </button>
+              <button type="button" (click)="toggleDateFormat()" style="margin-left: 1em; background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%); color: #fff; font-weight: bold; font-size: 1.1em; border-radius: 2em; padding: 1em 2.5em; box-shadow: 0 2px 8px rgba(25, 118, 210, 0.12); border: none; outline: none; cursor: pointer; transition: background 0.2s;">
+                <mat-icon>swap_horiz</mat-icon>
+                {{ showOnlyFormattedDates ? '全ての合計を表示' : '賞与の保険料のみ表示' }}
+              </button>
             </div>
           </div>
-          <table class="premium-table">
-            <thead>
-              <tr>
-                <th>氏名</th>
-                <th>健康保険料（従業員負担）</th>
-                <th>健康保険料（会社負担）</th>
-                <th>健康保険料（2号）（従業員負担）</th>
-                <th>健康保険料（2号）（会社負担）</th>
-                <th>厚生年金保険料（従業員負担）</th>
-                <th>厚生年金保険料（会社負担）</th>
-                <th>従業員負担合計</th>
-                <th>会社負担合計</th>
-                <th>総合計</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let row of employeePremiumSummaries">
-                <td>{{ row.name }}</td>
-                <td>{{ row.ippanEmployee.gt(0) ? (row.ippanEmployee.toNumber() | number) : '' }}</td>
-                <td>{{ row.ippanCompany.gt(0) ? (row.ippanCompany.toNumber() | number) : '' }}</td>
-                <td>{{ row.tokuteiEmployee.gt(0) ? (row.tokuteiEmployee.toNumber() | number) : '' }}</td>
-                <td>{{ row.tokuteiCompany.gt(0) ? (row.tokuteiCompany.toNumber() | number) : '' }}</td>
-                <td>{{ row.kouseiEmployee.gt(0) ? (row.kouseiEmployee.toNumber() | number) : '' }}</td>
-                <td>{{ row.kouseiCompany.gt(0) ? (row.kouseiCompany.toNumber() | number) : '' }}</td>
-                <td>{{ row.totalEmployee.toNumber() | number }}</td>
-                <td>{{ row.totalCompany.toNumber() | number }}</td>
-                <td>{{ row.total.toNumber() | number }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </ng-container>
-
-    <ng-container *ngIf="selectedTab === 'master'">
-      <h2>マスタ管理</h2>
-      <div class="section">
-        <div class="form-group">
-          <label for="masterYearSelect">対象年度</label>
-          <select id="masterYearSelect" [(ngModel)]="selectedMasterYear" name="masterYearSelect" (change)="onMasterSelectionChange()">
-            <option *ngFor="let y of yearOptions" [value]="y">{{ y }}年度</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="masterPrefectureSelect">都道府県</label>
-          <select id="masterPrefectureSelect" [(ngModel)]="selectedMasterPrefectureId" name="masterPrefectureSelect" (change)="onMasterSelectionChange()">
-            <option *ngFor="let pref of prefectures" [value]="pref.id">{{ pref.id }}</option>
-          </select>
-        </div>
-        <div *ngIf="masterGradesError === 'データがありません'" style="color:#d32f2f; font-weight:bold; margin-bottom: 1em;">
-          データがありません。データをインポートしてください。
-        </div>
-        <div *ngIf="masterGradesError && masterGradesError !== 'データがありません'" style="color:#d32f2f; font-weight:bold;">
-          {{ masterGradesError }}
-        </div>
-
-        <!-- インポート機能をここに移動 -->
-        <div class="card mb-4">
-          <div class="card-header">
-            <h5 class="mb-0">保険料表インポート</h5>
-          </div>
-          <div class="card-body">
-            <div class="mb-3">
-              <label for="importYear" class="form-label">年度</label>
-              <select id="importYear" class="form-select" [(ngModel)]="selectedYear">
-                <option *ngFor="let y of yearOptions" [value]="y">{{ y }}年度</option>
-              </select>
-            </div>
-            <div class="mb-3">
-              <label for="excelFile" class="form-label">協会けんぽExcelファイル</label>
-              <input type="file" class="form-control" id="excelFile" accept=".xlsx,.xls" (change)="onFileInputChange($event)" [disabled]="isImporting">
-            </div>
-            <div class="mb-3" *ngIf="sheetNames.length > 0">
-              <label for="sheetSelect" class="form-label">シート選択（都道府県）</label>
-              <select id="sheetSelect" class="form-select" [(ngModel)]="selectedSheetName">
-                <option *ngFor="let name of sheetNames" [value]="name">{{ name }}</option>
-              </select>
-            </div>
-            <div class="mb-3">
-              <button class="btn btn-primary" (click)="onImportClick()" [disabled]="!selectedFile || !selectedSheetName || isImporting">インポート</button>
-            </div>
-            <div *ngIf="importError" class="alert alert-danger">
-              {{ importError }}
-            </div>
-            <div *ngIf="isImporting" class="alert alert-info">
-              インポート中...
-            </div>
-          </div>
-        </div>
-        <!-- ここまでインポート機能 -->
-
-        <!-- 柔らかい注意書き -->
-        <div style="border-radius: 10px; padding: 1.2em 1.5em; margin-bottom: 1.5em; max-width: 600px">
-          <div style="font-weight: bold; font-size: 1.1em; margin-bottom: 0.5em;">
-            インポート時の注意
-          </div>
-          <ul style="margin: 0 0 0 1.2em; padding: 0; font-size: 1em;">
-            <li>年度と<strong>都道府県</strong>を選択してください。</li>
-            <li>都道府県選択はファイルを正常に選択したときに表示されます。</li>
-          </ul>
-        </div>
-
-        <div *ngIf="isLoadingMasterGrades" style="color:#1976d2; font-weight:bold;">データ取得中...</div>
-        <div *ngIf="masterGrades">
-          <div style="margin-bottom: 1em;">
-            <button *ngIf="!isEditMode" (click)="enableEditMode()" class="btn btn-warning">編集</button>
-            <button *ngIf="isEditMode" (click)="saveMasterGrades()" class="btn btn-success" style="margin-right: 0.5em;">保存</button>
-            <button *ngIf="isEditMode" (click)="cancelEditMode()" class="btn btn-secondary">キャンセル</button>
-          </div>
-
-          <!-- 料率編集フォーム -->
-          <div class="card mb-4" *ngIf="isEditMode">
-            <div class="card-header">
-              <h5 class="mb-0">料率設定</h5>
-            </div>
-            <div class="card-body">
-              <div class="row">
-                <div class="col-md-3">
-                  <div class="form-group">
-                    <label>健康保険料率</label>
-                    <input type="number" step="0.01" [(ngModel)]="editRates.ippan_rate" class="form-control">
-                  </div>
-                </div>
-                <div class="col-md-3">
-                  <div class="form-group">
-                    <label>健康保険料率（2号）</label>
-                    <input type="number" step="0.01" [(ngModel)]="editRates.tokutei_rate" class="form-control">
-                  </div>
-                </div>
-                <div class="col-md-3">
-                  <div class="form-group">
-                    <label>厚生年金保険料率</label>
-                    <input type="number" step="0.01" [(ngModel)]="editRates.kousei_rate" class="form-control">
-                  </div>
-                </div>
-                <div class="col-md-3">
-                  <div class="form-group">
-                    <label>介護保険料率</label>
-                    <input type="number" step="0.01" [(ngModel)]="editRates.kaigo_rate" class="form-control">
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="table-responsive">
-            <table class="premium-table">
-              <thead>
+          <div style="max-height: 500px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 8px;">
+            <table class="premium-table" style="margin-bottom: 0;">
+              <thead style="position: sticky; top: 0; z-index: 1; background: #e3f2fd;">
                 <tr>
-                  <th>等級</th>
-                  <th>標準報酬月額</th>
-                  <th>報酬月額下限</th>
-                  <th>報酬月額上限</th>
-                  <th>健康保険料（全額）</th>
-                  <th>健康保険料（折半額）</th>
-                  <th>2号保険者（全額）</th>
-                  <th>2号保険者（折半額）</th>
-                  <th>厚生年金保険料（全額）</th>
-                  <th>厚生年金保険料（半額）</th>
+                  <th>氏名</th>
+                  <th>健康保険料（従業員負担）</th>
+                  <th>健康保険料（会社負担）</th>
+                  <th>健康保険料（2号）（従業員負担）</th>
+                  <th>健康保険料（2号）（会社負担）</th>
+                  <th>介護保険料（従業員負担）</th>
+                  <th>介護保険料（会社負担）</th>
+                  <th>厚生年金保険料（従業員負担）</th>
+                  <th>厚生年金保険料（会社負担）</th>
+                  <th>従業員負担合計</th>
+                  <th>会社負担合計</th>
+                  <th>総合計</th>
                 </tr>
               </thead>
               <tbody>
-                <tr *ngFor="let grade of (isEditMode ? (editGrades | keyvalue : sortByGrade) : (masterGrades | keyvalue : sortByGrade))">
-                  <td>{{ grade.key }}</td>
-                  <td *ngIf="!isEditMode">{{ ($any(grade.value).standardSalary != null ? $any(grade.value).standardSalary : 0) | number }}</td>
-                  <td *ngIf="isEditMode"><input type="number" [(ngModel)]="editGrades[grade.key].standardSalary" style="width: 7em;"></td>
-                  <td *ngIf="!isEditMode">{{ ($any(grade.value).salaryMin != null ? $any(grade.value).salaryMin : 0) | number }}</td>
-                  <td *ngIf="isEditMode"><input type="number" [(ngModel)]="editGrades[grade.key].salaryMin" style="width: 7em;"></td>
-                  <td *ngIf="!isEditMode">{{ ($any(grade.value).salaryMax != null ? $any(grade.value).salaryMax : 0) | number }}</td>
-                  <td *ngIf="isEditMode"><input type="number" [(ngModel)]="editGrades[grade.key].salaryMax" style="width: 7em;"></td>
-                  <td *ngIf="!isEditMode">{{ ($any(grade.value).ippan?.full != null ? $any(grade.value).ippan.full : 0) | number }}</td>
-                  <td *ngIf="isEditMode"><input type="number" [(ngModel)]="editGrades[grade.key].ippan.full" style="width: 7em;"></td>
-                  <td *ngIf="!isEditMode">{{ ($any(grade.value).ippan?.half != null ? $any(grade.value).ippan.half : 0) | number }}</td>
-                  <td *ngIf="isEditMode"><input type="number" [(ngModel)]="editGrades[grade.key].ippan.half" style="width: 7em;"></td>
-                  <td *ngIf="!isEditMode">{{ ($any(grade.value).tokutei?.full != null ? $any(grade.value).tokutei.full : 0) | number }}</td>
-                  <td *ngIf="isEditMode"><input type="number" [(ngModel)]="editGrades[grade.key].tokutei.full" style="width: 7em;"></td>
-                  <td *ngIf="!isEditMode">{{ ($any(grade.value).tokutei?.half != null ? $any(grade.value).tokutei.half : 0) | number }}</td>
-                  <td *ngIf="isEditMode"><input type="number" [(ngModel)]="editGrades[grade.key].tokutei.half" style="width: 7em;"></td>
-                  <td *ngIf="!isEditMode">{{ ($any(grade.value).kousei?.full != null ? $any(grade.value).kousei.full : 0) | number }}</td>
-                  <td *ngIf="isEditMode"><input type="number" [(ngModel)]="editGrades[grade.key].kousei.full" style="width: 7em;"></td>
-                  <td *ngIf="!isEditMode">{{ ($any(grade.value).kousei?.half != null ? $any(grade.value).kousei.half : 0) | number }}</td>
-                  <td *ngIf="isEditMode"><input type="number" [(ngModel)]="editGrades[grade.key].kousei.half" style="width: 7em;"></td>
+                <tr *ngFor="let row of employeePremiumSummaries">
+                  <td>{{ row.name }}</td>
+                  <td>{{ row.ippanEmployee.gt(0) ? (row.ippanEmployee.toNumber() | number) : '' }}</td>
+                  <td>{{ row.ippanCompany.gt(0) ? (row.ippanCompany.toNumber() | number) : '' }}</td>
+                  <td>{{ row.tokuteiEmployee.gt(0) ? (row.tokuteiEmployee.toNumber() | number) : '' }}</td>
+                  <td>{{ row.tokuteiCompany.gt(0) ? (row.tokuteiCompany.toNumber() | number) : '' }}</td>
+                  <td>{{ row.kaigoEmployee?.gt(0) ? (row.kaigoEmployee.toNumber() | number) : '' }}</td>
+                  <td>{{ row.kaigoCompany?.gt(0) ? (row.kaigoCompany.toNumber() | number) : '' }}</td>
+                  <td>{{ row.kouseiEmployee.gt(0) ? (row.kouseiEmployee.toNumber() | number) : '' }}</td>
+                  <td>{{ row.kouseiCompany.gt(0) ? (row.kouseiCompany.toNumber() | number) : '' }}</td>
+                  <td>{{ row.totalEmployee.toNumber() | number }}</td>
+                  <td>{{ row.totalCompany.toNumber() | number }}</td>
+                  <td>{{ row.total.toNumber() | number }}</td>
                 </tr>
               </tbody>
             </table>

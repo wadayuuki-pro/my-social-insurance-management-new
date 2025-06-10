@@ -283,6 +283,7 @@ export class EmployeeManagementComponent implements OnInit {
     if (emp.isNewEmployeeThisMonth) {
       return '新入社員です';
     }
+
     // どこか1つでも「休職中です。有給か無給かを確認し判断してください」が含まれていたらそれだけ返す
     const leaveMsg = '休職中です。有給か無給かを確認し判断してください';
     if (
@@ -292,6 +293,7 @@ export class EmployeeManagementComponent implements OnInit {
     ) {
       return leaveMsg;
     }
+
     // どちらかのrequiredActionsが「短時間労働者です」だけの場合はそれだけ返す
     const isShortTimeOnly = (arr: string[] | undefined) =>
       arr && arr.length === 1 && arr[0] === '短時間労働者です';
@@ -301,6 +303,7 @@ export class EmployeeManagementComponent implements OnInit {
     ) {
       return '短時間労働者です';
     }
+
     // どちらかのrequiredActionsが「非正規労働者です」だけの場合はそれだけ返す
     const isNonRegularOnly = (arr: string[] | undefined) =>
       arr && arr.length === 1 && arr[0] === '非正規労働者です';
@@ -310,6 +313,17 @@ export class EmployeeManagementComponent implements OnInit {
     ) {
       return '非正規労働者です';
     }
+
+    // どちらかのrequiredActionsが「役員です」だけの場合はそれだけ返す
+    const isDirectorOnly = (arr: string[] | undefined) =>
+      arr && arr.length === 1 && arr[0] === '役員です';
+    if (
+      (isDirectorOnly(emp.healthInsuranceRequiredActions) && (!emp.nursingInsuranceRequiredActions || emp.nursingInsuranceRequiredActions.length === 0) && (!emp.pensionInsuranceRequiredActions || emp.pensionInsuranceRequiredActions.length === 0)) ||
+      (isDirectorOnly(emp.pensionInsuranceRequiredActions) && (!emp.nursingInsuranceRequiredActions || emp.nursingInsuranceRequiredActions.length === 0) && (!emp.healthInsuranceRequiredActions || emp.healthInsuranceRequiredActions.length === 0))
+    ) {
+      return '役員です';
+    }
+
     // どこか1つでも「海外赴任中です。」が含まれていたらそれだけ返す
     const overseasMsg = '海外赴任中です。';
     if (
@@ -334,6 +348,11 @@ export class EmployeeManagementComponent implements OnInit {
       if (onlyTodoke) return todokeMsg;
     }
     // --- ここまで ---
+
+    // 役員の場合は「役員です」のみを表示
+    if (emp.employment_type === '役員') {
+      return '役員です';
+    }
 
     let summary = '';
     if (emp.healthInsuranceRequiredActions?.length) {
@@ -2385,8 +2404,8 @@ if (duplicateCodes.length > 0) {
     // 判定対象月の末日を取得
     const lastDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
     
-    // 産休期間内かどうかを判定
-    return targetDate >= startDate && targetDate <= endDate;
+    // 判定対象月の末日が産休期間内に含まれているかどうかを判定
+    return lastDayOfMonth >= startDate && lastDayOfMonth <= endDate;
   }
 
   // 育休期間内の月末が含まれる月かどうかを判定
@@ -2496,6 +2515,9 @@ if (duplicateCodes.length > 0) {
     // 正社員は常に適用
     if (employee.employment_type === '正社員') {
       result.isEligible = true;
+    } else if (employee.employment_type === '役員') {
+      result.isEligible = true;
+      result.requiredActions = ['役員です'];
     } else if (employee.employment_type === 'パートタイム' || 
         employee.employment_type === 'アルバイト' || 
         employee.employment_type === '契約社員' || 
@@ -2606,10 +2628,49 @@ if (duplicateCodes.length > 0) {
       requiredActions: []
     };
 
-    // 年齢チェック
-    const age = this.calculateAge(employee.date_of_birth);
-    if (age < 40 || age >= 65) {
-      result.reason = `${age < 40 ? '40歳未満のため適用外' : '65歳以上のため会社での管理対象外です。'}`;
+    // 年齢チェック（40歳の誕生日の属する月から被保険者、1日生まれは前月から）
+    if (!employee.date_of_birth) {
+      result.reason = '生年月日が未設定のため判定できません';
+      return result;
+    }
+
+    const birthDate = new Date(employee.date_of_birth);
+    const birthDay = birthDate.getDate();
+    
+    // 40歳になる月を計算
+    const fortyYearsOldMonth = new Date(birthDate);
+    fortyYearsOldMonth.setFullYear(birthDate.getFullYear() + 40);
+    
+    // 被保険者となる月を計算（1日生まれは前月、それ以外はその月）
+    const eligibleMonth = new Date(fortyYearsOldMonth);
+    if (birthDay === 1) {
+      // 1日生まれは前月から
+      eligibleMonth.setMonth(eligibleMonth.getMonth() - 1);
+    }
+    // それ以外はその月から（eligibleMonthはそのまま）
+
+    // 65歳になる月を計算
+    const sixtyFiveYearsOldMonth = new Date(birthDate);
+    sixtyFiveYearsOldMonth.setFullYear(birthDate.getFullYear() + 65);
+
+    // 65歳の適用終了月を計算（1日生まれは前月、それ以外はその月）
+    const endEligibleMonth = new Date(sixtyFiveYearsOldMonth);
+    if (birthDay === 1) {
+      // 1日生まれは前月まで
+      endEligibleMonth.setMonth(endEligibleMonth.getMonth() - 1);
+    }
+    // それ以外はその月まで（endEligibleMonthはそのまま）
+
+    // 判定対象月と比較
+    if (targetDate.getFullYear() < eligibleMonth.getFullYear() ||
+        (targetDate.getFullYear() === eligibleMonth.getFullYear() && 
+         targetDate.getMonth() < eligibleMonth.getMonth())) {
+      result.reason = '40歳の誕生日の属する月（1日生まれは前月）から被保険者となるため適用外';
+      return result;
+    } else if (targetDate.getFullYear() > endEligibleMonth.getFullYear() ||
+              (targetDate.getFullYear() === endEligibleMonth.getFullYear() && 
+               targetDate.getMonth() > endEligibleMonth.getMonth())) {
+      result.reason = '65歳の誕生日の属する月（1日生まれは前月）を超えたため会社での管理対象外です。';
       return result;
     }
 
@@ -2700,6 +2761,9 @@ if (duplicateCodes.length > 0) {
     // 正社員は常に適用
     if (employee.employment_type === '正社員') {
       result.isEligible = true;
+    } else if (employee.employment_type === '役員') {
+      result.isEligible = true;
+      result.requiredActions = ['役員です'];
     } else if (
       employee.employment_type === 'パートタイム' ||
       employee.employment_type === 'アルバイト' ||
@@ -2790,7 +2854,7 @@ if (duplicateCodes.length > 0) {
   private calculateAge(dateOfBirth: string): number {
     if (!dateOfBirth) return 0;
     const birthDate = new Date(dateOfBirth);
-    const today = new Date();
+    const targetDate = this.getJudgementTargetDate();
 
     // 1日生まれの場合は1カ月前倒し
     let effectiveBirthDate = new Date(birthDate);
@@ -2798,9 +2862,9 @@ if (duplicateCodes.length > 0) {
       effectiveBirthDate.setMonth(birthDate.getMonth() - 1);
     }
 
-    let age = today.getFullYear() - effectiveBirthDate.getFullYear();
-    const monthDiff = today.getMonth() - effectiveBirthDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < effectiveBirthDate.getDate())) {
+    let age = targetDate.getFullYear() - effectiveBirthDate.getFullYear();
+    const monthDiff = targetDate.getMonth() - effectiveBirthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && targetDate.getDate() < effectiveBirthDate.getDate())) {
       age--;
     }
     return age;

@@ -1,133 +1,307 @@
 <div class="vendor-page-container">
-  <h2>新規会社登録</h2>
-  <form class="company-form" [formGroup]="companyForm" (ngSubmit)="registerCompany()">
-    <div class="form-group">
-      <label>会社名<span class="required">*</span></label>
-      <input type="text" formControlName="company_name" placeholder="会社名" />
-    </div>
-    <div class="form-group">
-      <label>会社名（カナ）<span class="required">*</span></label>
-      <input type="text" formControlName="company_name_kana" placeholder="カイシャメイ（カナ）" />
-      <div class="error" *ngIf="companyForm.get('company_name_kana')?.invalid && companyForm.get('company_name_kana')?.touched">
-        <ng-container *ngIf="companyForm.get('company_name_kana')?.errors?.['katakana']">
-          全角カタカナで入力してください。
-        </ng-container>
-        <ng-container *ngIf="companyForm.get('company_name_kana')?.errors?.['required']">
-          会社名（カナ）は必須です。
-        </ng-container>
-      </div>
-    </div>
-    <div class="form-group">
-      <label>郵便番号<span class="required">*</span></label>
-      <input type="text" formControlName="postal_code" placeholder="郵便番号（例: 123-4567）" (ngModelChange)="onCompanyPostalCodeChange($event)" maxlength="8" />
-    </div>
-    <div class="form-group">
-      <label>所在地</label>
-      <input type="text" formControlName="address" placeholder="所在地（任意）" />
-      <input type="hidden" formControlName="prefecture_id" />
-    </div>
-    <div class="form-group">
-      <label>代表電話番号<span class="required">*</span></label>
-      <input type="text" formControlName="phone_number" placeholder="電話番号（例: 03-1234-5678）" />
-    </div>
-    <div class="form-group">
-      <label>代表メールアドレス<span class="required">*</span></label>
-      <input type="email" formControlName="email" placeholder="メールアドレス" />
-    </div>
-    <div class="form-group">
-      <label>代表者氏名<span class="required">*</span></label>
-      <input type="text" formControlName="representative_name" placeholder="代表者氏名" />
-    </div>
-    <div class="form-group">
-      <label>代表者役職名</label>
-      <input type="text" formControlName="representative_title" placeholder="代表者役職名（任意）" />
-    </div>
-    <div class="form-group">
-      <label>業種</label>
-      <input type="text" formControlName="industry" placeholder="業種（任意）" />
-    </div>
-    <div class="form-group">
-      <label>特定適用事業所かどうか<span class="required">*</span></label>
-      <div style="display: flex; gap: 1.5em; align-items: center;">
-        <label style="font-weight: normal;">
-          <input type="radio" formControlName="is_tokutei" [value]="false" checked /> 特定適用事業所でない
-        </label>
-        <label style="font-weight: normal;">
-          <input type="radio" formControlName="is_tokutei" [value]="true" /> 特定適用事業所である
-        </label>
-      </div>
-    </div>
-    <button type="submit" [disabled]="companyForm.invalid">会社登録</button>
-    <div *ngIf="companyRegisterError" class="error">{{ companyRegisterError }}</div>
-    <div *ngIf="companyRegisterSuccess" style="color: #1976d2; margin-top: 0.5rem;">
-      会社情報を登録しました（ID: {{ newCompanyId }}）
-    </div>
-  </form>
-
-  <h2>事業所追加</h2>
-  <form class="branch-add-form" [formGroup]="branchForm" (ngSubmit)="addBranch()">
-    <div class="form-group">
-      <label>会社ID <span class="required">*</span></label>
-      <input type="text" formControlName="company_id" placeholder="会社IDを入力（例: 1001）" />
-      <div class="error" *ngIf="!companyIdExists && branchForm.get('company_id')?.touched">
-        会社IDが存在しません
-      </div>
-    </div>
-    <div class="form-group">
-      <label>事業所ID（任意）</label>
-      <input type="text" formControlName="department_id" placeholder="事業所ID（自動生成可）" />
-    </div>
-    <div class="form-group">
-      <label>事業所・部署名 <span class="required">*</span></label>
-      <input type="text" formControlName="department_name" placeholder="事業所・部署名" />
-    </div>
-    <div class="form-group">
-      <label>郵便番号</label>
-      <input type="text" formControlName="postal_code" placeholder="郵便番号（例: 123-4567）" (ngModelChange)="onPostalCodeChange($event)" maxlength="8" />
-    </div>
-    <div class="form-group">
-      <label>所在地</label>
-      <input type="text" formControlName="address" placeholder="所在地（任意）" />
-      <input type="hidden" formControlName="prefecture_id" />
-    </div>
-    <div class="form-group">
-      <label>年金・健康保険届け出用事業所番号</label>
-      <input type="text" formControlName="office_number" placeholder="事業所番号（任意）" />
-    </div>
-    <div class="form-group">
-      <label>保険者番号</label>
-      <input type="text" formControlName="insurer_number" placeholder="保険者番号（任意）" />
-    </div>
-    <div class="form-group">
-      <label>代表電話番号</label>
-      <input type="text" formControlName="phone_number" placeholder="電話番号（任意）" />
-    </div>
-    <div class="form-group">
-      <label>メールアドレス</label>
-      <input type="email" formControlName="email" placeholder="メールアドレス（任意）" />
-    </div>
-    <div class="form-group">
-      <label>所属長・責任者氏名 <span class="required">*</span></label>
-      <input type="text" formControlName="manager_name" placeholder="所属長・責任者氏名（必須）" />
-    </div>
-    <button type="submit" [disabled]="branchForm.invalid">事業所追加</button>
-  </form>
-  <div *ngIf="branchRegisterSuccess" style="color: #1976d2; margin-top: 0.5rem;">
-    事業所ID{{ newDepartmentId }}が作成されました
+  <h2>ベンダー専用ページ</h2>
+  <div class="tab-header">
+    <button [class.active]="selectedTab === 'company'" (click)="selectTab('company')">🏢 会社登録</button>
+    <button [class.active]="selectedTab === 'branch'" (click)="selectTab('branch')">🏪 事業所追加</button>
+    <button [class.active]="selectedTab === 'delete'" (click)="selectTab('delete')">🗑️ 会社削除</button>
+    <button [class.active]="selectedTab === 'premium'" (click)="selectTab('premium')">📊 保険料表管理</button>
   </div>
 
-  <h2>登録会社削除</h2>
-  <form class="company-delete-form" [formGroup]="deleteForm" (ngSubmit)="onDeleteCompany()">
-    <div class="form-group">
-      <label>会社名</label>
-      <input type="text" formControlName="company_name" placeholder="削除したい会社名を入力" />
-    </div>
-    <div class="form-group">
-      <label>会社ID</label>
-      <input type="text" [value]="deleteCompanyId" readonly placeholder="該当会社IDが表示されます" />
-    </div>
-    <button type="submit" [disabled]="!deleteCompanyId">削除確認</button>
-    <div class="error" *ngIf="deleteError">{{ deleteError }}</div>
-    <div style="color: #1976d2; margin-top: 0.5rem;" *ngIf="deleteSuccess">会社ID{{ deleteCompanyId }}のデータを削除しました</div>
-  </form>
+  <div class="tab-content">
+    <ng-container *ngIf="selectedTab === 'company'">
+      <form class="company-form" [formGroup]="companyForm" (ngSubmit)="registerCompany()">
+        <div class="form-group">
+          <label>会社名<span class="required">*</span></label>
+          <input type="text" formControlName="company_name" placeholder="会社名" />
+        </div>
+        <div class="form-group">
+          <label>会社名（カナ）<span class="required">*</span></label>
+          <input type="text" formControlName="company_name_kana" placeholder="カイシャメイ（カナ）" />
+          <div class="error" *ngIf="companyForm.get('company_name_kana')?.invalid && companyForm.get('company_name_kana')?.touched">
+            <ng-container *ngIf="companyForm.get('company_name_kana')?.errors?.['katakana']">
+              全角カタカナで入力してください。
+            </ng-container>
+            <ng-container *ngIf="companyForm.get('company_name_kana')?.errors?.['required']">
+              会社名（カナ）は必須です。
+            </ng-container>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>郵便番号<span class="required">*</span></label>
+          <input type="text" formControlName="postal_code" placeholder="郵便番号（例: 123-4567）" (ngModelChange)="onCompanyPostalCodeChange($event)" maxlength="8" />
+        </div>
+        <div class="form-group">
+          <label>所在地</label>
+          <input type="text" formControlName="address" placeholder="所在地（任意）" />
+          <input type="hidden" formControlName="prefecture_id" />
+        </div>
+        <div class="form-group">
+          <label>代表電話番号<span class="required">*</span></label>
+          <input type="text" formControlName="phone_number" placeholder="電話番号（例: 03-1234-5678）" />
+        </div>
+        <div class="form-group">
+          <label>代表メールアドレス<span class="required">*</span></label>
+          <input type="email" formControlName="email" placeholder="メールアドレス" />
+        </div>
+        <div class="form-group">
+          <label>代表者氏名<span class="required">*</span></label>
+          <input type="text" formControlName="representative_name" placeholder="代表者氏名" />
+        </div>
+        <div class="form-group">
+          <label>代表者役職名</label>
+          <input type="text" formControlName="representative_title" placeholder="代表者役職名（任意）" />
+        </div>
+        <div class="form-group">
+          <label>業種</label>
+          <input type="text" formControlName="industry" placeholder="業種（任意）" />
+        </div>
+        <div class="form-group">
+          <label>特定適用事業所かどうか<span class="required">*</span></label>
+          <div style="display: flex; gap: 1.5em; align-items: center;">
+            <label style="font-weight: normal;">
+              <input type="radio" formControlName="is_tokutei" [value]="false" checked /> 特定適用事業所でない
+            </label>
+            <label style="font-weight: normal;">
+              <input type="radio" formControlName="is_tokutei" [value]="true" /> 特定適用事業所である
+            </label>
+          </div>
+        </div>
+        <button type="submit" [disabled]="companyForm.invalid">会社登録</button>
+        <div *ngIf="companyRegisterError" class="error">{{ companyRegisterError }}</div>
+        <div *ngIf="companyRegisterSuccess" style="color: #1976d2; margin-top: 0.5rem;">
+          会社情報を登録しました（ID: {{ newCompanyId }}）
+        </div>
+      </form>
+    </ng-container>
+
+    <ng-container *ngIf="selectedTab === 'branch'">
+      <form class="branch-add-form" [formGroup]="branchForm" (ngSubmit)="addBranch()">
+        <div class="form-group">
+          <label>会社ID <span class="required">*</span></label>
+          <input type="text" formControlName="company_id" placeholder="会社IDを入力（例: 1001）" />
+          <div class="error" *ngIf="!companyIdExists && branchForm.get('company_id')?.touched">
+            会社IDが存在しません
+          </div>
+        </div>
+        <div class="form-group">
+          <label>事業所ID（任意）</label>
+          <input type="text" formControlName="department_id" placeholder="事業所ID（自動生成可）" />
+        </div>
+        <div class="form-group">
+          <label>事業所・部署名 <span class="required">*</span></label>
+          <input type="text" formControlName="department_name" placeholder="事業所・部署名" />
+        </div>
+        <div class="form-group">
+          <label>郵便番号</label>
+          <input type="text" formControlName="postal_code" placeholder="郵便番号（例: 123-4567）" (ngModelChange)="onPostalCodeChange($event)" maxlength="8" />
+        </div>
+        <div class="form-group">
+          <label>所在地</label>
+          <input type="text" formControlName="address" placeholder="所在地（任意）" />
+          <input type="hidden" formControlName="prefecture_id" />
+        </div>
+        <div class="form-group">
+          <label>年金・健康保険届け出用事業所番号</label>
+          <input type="text" formControlName="office_number" placeholder="事業所番号（任意）" />
+        </div>
+        <div class="form-group">
+          <label>保険者番号</label>
+          <input type="text" formControlName="insurer_number" placeholder="保険者番号（任意）" />
+        </div>
+        <div class="form-group">
+          <label>代表電話番号</label>
+          <input type="text" formControlName="phone_number" placeholder="電話番号（任意）" />
+        </div>
+        <div class="form-group">
+          <label>メールアドレス</label>
+          <input type="email" formControlName="email" placeholder="メールアドレス（任意）" />
+        </div>
+        <div class="form-group">
+          <label>所属長・責任者氏名 <span class="required">*</span></label>
+          <input type="text" formControlName="manager_name" placeholder="所属長・責任者氏名（必須）" />
+        </div>
+        <button type="submit" [disabled]="branchForm.invalid">事業所追加</button>
+      </form>
+      <div *ngIf="branchRegisterSuccess" style="color: #1976d2; margin-top: 0.5rem;">
+        事業所ID{{ newDepartmentId }}が作成されました
+      </div>
+    </ng-container>
+
+    <ng-container *ngIf="selectedTab === 'delete'">
+      <form class="company-delete-form" [formGroup]="deleteForm" (ngSubmit)="onDeleteCompany()">
+        <div class="form-group">
+          <label>会社名</label>
+          <input type="text" formControlName="company_name" placeholder="削除したい会社名を入力" />
+        </div>
+        <div class="form-group">
+          <label>会社ID</label>
+          <input type="text" [value]="deleteCompanyId" readonly placeholder="該当会社IDが表示されます" />
+        </div>
+        <button type="submit" [disabled]="!deleteCompanyId">削除確認</button>
+        <div class="error" *ngIf="deleteError">{{ deleteError }}</div>
+        <div style="color: #1976d2; margin-top: 0.5rem;" *ngIf="deleteSuccess">会社ID{{ deleteCompanyId }}のデータを削除しました</div>
+      </form>
+    </ng-container>
+
+    <ng-container *ngIf="selectedTab === 'premium'">
+      <h2>保険料表管理</h2>
+      <div class="section">
+        <div class="form-group">
+          <label for="masterYearSelect">対象年度</label>
+          <select id="masterYearSelect" [(ngModel)]="selectedMasterYear" name="masterYearSelect" (change)="onMasterSelectionChange()">
+            <option *ngFor="let y of yearOptions" [value]="y">{{ y }}年度</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="masterPrefectureSelect">都道府県</label>
+          <select id="masterPrefectureSelect" [(ngModel)]="selectedMasterPrefectureId" name="masterPrefectureSelect" (change)="onMasterSelectionChange()">
+            <option *ngFor="let pref of prefectures" [value]="pref.id">{{ pref.id }}</option>
+          </select>
+        </div>
+        <div *ngIf="masterGradesError === 'データがありません'" style="color:#d32f2f; font-weight:bold; margin-bottom: 1em;">
+          データがありません。データをインポートしてください。
+        </div>
+        <div *ngIf="masterGradesError && masterGradesError !== 'データがありません'" style="color:#d32f2f; font-weight:bold;">
+          {{ masterGradesError }}
+        </div>
+
+        <!-- インポート機能 -->
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="mb-0">保険料表インポート</h5>
+          </div>
+          <div class="card-body">
+            <div class="mb-3">
+              <label for="importYear" class="form-label">年度</label>
+              <select id="importYear" class="form-select" [(ngModel)]="selectedYear" [disabled]="isImporting">
+                <option *ngFor="let y of yearOptions" [value]="y">{{ y }}年度</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="excelFile" class="form-label">協会けんぽExcelファイル</label>
+              <input type="file" class="form-control" id="excelFile" accept=".xlsx,.xls" (change)="onFileInputChange($event)" [disabled]="isImporting">
+              <div class="form-text">Excelファイルを選択してください。シート名は都道府県名になっている必要があります。</div>
+            </div>
+            <div class="mb-3" *ngIf="sheetNames.length > 0">
+              <label for="sheetSelect" class="form-label">シート選択（都道府県）</label>
+              <select id="sheetSelect" class="form-select" [(ngModel)]="selectedSheetName" [disabled]="isImporting">
+                <option *ngFor="let name of sheetNames" [value]="name">{{ name }}</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <button class="btn btn-primary" (click)="onImportClick()" [disabled]="!selectedFile || !selectedSheetName || isImporting">
+                <span *ngIf="!isImporting">インポート</span>
+                <span *ngIf="isImporting">インポート中...</span>
+              </button>
+            </div>
+            <div *ngIf="importError" class="alert alert-danger">
+              <i class="bi bi-exclamation-triangle-fill me-2"></i>
+              {{ importError }}
+            </div>
+            <div *ngIf="isImporting" class="alert alert-info">
+              <i class="bi bi-info-circle-fill me-2"></i>
+              データをインポート中です。しばらくお待ちください...
+            </div>
+          </div>
+        </div>
+
+        <!-- 注意書き -->
+        <div class="alert alert-warning">
+          <h6 class="alert-heading mb-2">インポート時の注意事項</h6>
+          <ul class="mb-0">
+            <li>年度と都道府県を選択してください。</li>
+            <li>都道府県選択はファイルを正常に選択したときに表示されます。</li>
+            <li>Excelファイルのシート名は都道府県名と一致している必要があります。</li>
+            <li>インポート中は他の操作を行わないでください。</li>
+          </ul>
+        </div>
+
+        <div *ngIf="isLoadingMasterGrades" style="color:#1976d2; font-weight:bold;">データ取得中...</div>
+        <div *ngIf="masterGrades">
+          <div style="margin-bottom: 1em;">
+            <button *ngIf="!isEditMode" (click)="enableEditMode()" class="btn btn-warning">編集</button>
+            <button *ngIf="isEditMode" (click)="saveMasterGrades()" class="btn btn-success" style="margin-right: 0.5em;">保存</button>
+            <button *ngIf="isEditMode" (click)="cancelEditMode()" class="btn btn-secondary">キャンセル</button>
+          </div>
+
+          <!-- 料率編集フォーム -->
+          <div class="card mb-4" *ngIf="isEditMode">
+            <div class="card-header">
+              <h5 class="mb-0">料率設定</h5>
+            </div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-3">
+                  <div class="form-group">
+                    <label>健康保険料率</label>
+                    <input type="number" step="0.01" [(ngModel)]="editRates.ippan_rate" class="form-control">
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="form-group">
+                    <label>健康保険料率（2号）</label>
+                    <input type="number" step="0.01" [(ngModel)]="editRates.tokutei_rate" class="form-control">
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="form-group">
+                    <label>厚生年金保険料率</label>
+                    <input type="number" step="0.01" [(ngModel)]="editRates.kousei_rate" class="form-control">
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="form-group">
+                    <label>介護保険料率</label>
+                    <input type="number" step="0.01" [(ngModel)]="editRates.kaigo_rate" class="form-control">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="premium-table">
+              <thead>
+                <tr>
+                  <th>等級</th>
+                  <th>標準報酬月額</th>
+                  <th>報酬月額下限</th>
+                  <th>報酬月額上限</th>
+                  <th>健康保険料（全額）</th>
+                  <th>健康保険料（折半額）</th>
+                  <th>2号保険者（全額）</th>
+                  <th>2号保険者（折半額）</th>
+                  <th>厚生年金保険料（全額）</th>
+                  <th>厚生年金保険料（半額）</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let grade of (isEditMode ? (editGrades | keyvalue : sortByGrade) : (masterGrades | keyvalue : sortByGrade))">
+                  <td>{{ grade.key }}</td>
+                  <td *ngIf="!isEditMode">{{ ($any(grade.value).standardSalary != null ? $any(grade.value).standardSalary : 0) | number }}</td>
+                  <td *ngIf="isEditMode"><input type="number" [(ngModel)]="editGrades[grade.key].standardSalary" style="width: 7em;"></td>
+                  <td *ngIf="!isEditMode">{{ ($any(grade.value).salaryMin != null ? $any(grade.value).salaryMin : 0) | number }}</td>
+                  <td *ngIf="isEditMode"><input type="number" [(ngModel)]="editGrades[grade.key].salaryMin" style="width: 7em;"></td>
+                  <td *ngIf="!isEditMode">{{ ($any(grade.value).salaryMax != null ? $any(grade.value).salaryMax : 0) | number }}</td>
+                  <td *ngIf="isEditMode"><input type="number" [(ngModel)]="editGrades[grade.key].salaryMax" style="width: 7em;"></td>
+                  <td *ngIf="!isEditMode">{{ ($any(grade.value).ippan?.full != null ? $any(grade.value).ippan.full : 0) | number }}</td>
+                  <td *ngIf="isEditMode"><input type="number" [(ngModel)]="editGrades[grade.key].ippan.full" style="width: 7em;"></td>
+                  <td *ngIf="!isEditMode">{{ ($any(grade.value).ippan?.half != null ? $any(grade.value).ippan.half : 0) | number }}</td>
+                  <td *ngIf="isEditMode"><input type="number" [(ngModel)]="editGrades[grade.key].ippan.half" style="width: 7em;"></td>
+                  <td *ngIf="!isEditMode">{{ ($any(grade.value).tokutei?.full != null ? $any(grade.value).tokutei.full : 0) | number }}</td>
+                  <td *ngIf="isEditMode"><input type="number" [(ngModel)]="editGrades[grade.key].tokutei.full" style="width: 7em;"></td>
+                  <td *ngIf="!isEditMode">{{ ($any(grade.value).tokutei?.half != null ? $any(grade.value).tokutei.half : 0) | number }}</td>
+                  <td *ngIf="isEditMode"><input type="number" [(ngModel)]="editGrades[grade.key].tokutei.half" style="width: 7em;"></td>
+                  <td *ngIf="!isEditMode">{{ ($any(grade.value).kousei?.full != null ? $any(grade.value).kousei.full : 0) | number }}</td>
+                  <td *ngIf="isEditMode"><input type="number" [(ngModel)]="editGrades[grade.key].kousei.full" style="width: 7em;"></td>
+                  <td *ngIf="!isEditMode">{{ ($any(grade.value).kousei?.half != null ? $any(grade.value).kousei.half : 0) | number }}</td>
+                  <td *ngIf="isEditMode"><input type="number" [(ngModel)]="editGrades[grade.key].kousei.half" style="width: 7em;"></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </ng-container>
+  </div>
 </div>

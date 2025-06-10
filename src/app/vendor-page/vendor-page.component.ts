@@ -1,10 +1,12 @@
-import { Component } from '@angular/core';
-import { FormBuilder, FormGroup, Validators, ReactiveFormsModule, AbstractControl, ValidationErrors, ValidatorFn } from '@angular/forms';
+import { Component, OnInit } from '@angular/core';
+import { FormBuilder, FormGroup, Validators, ReactiveFormsModule, AbstractControl, ValidationErrors, ValidatorFn, FormsModule } from '@angular/forms';
 import { Firestore, doc, setDoc, collection, getDocs, query, where, deleteDoc, getDoc, serverTimestamp } from '@angular/fire/firestore';
 import { CommonModule } from '@angular/common';
 import { debounceTime } from 'rxjs/operators';
 import { createUserWithEmailAndPassword, Auth } from '@angular/fire/auth';
 import { HttpClient } from '@angular/common/http';
+import * as XLSX from 'xlsx';
+import { InsurancePremiumService } from '../shared/services/insurance-premium.service';
 
 // カタカナのみ許可するバリデータ
 function katakanaValidator(): ValidatorFn {
@@ -19,11 +21,12 @@ function katakanaValidator(): ValidatorFn {
 @Component({
   selector: 'app-vendor-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule],
   templateUrl: './vendor-page.component.html',
   styleUrl: './vendor-page.component.scss'
 })
-export class VendorPageComponent {
+export class VendorPageComponent implements OnInit {
+  selectedTab: string = 'company';
   companyForm: FormGroup;
   companyRegisterSuccess = false;
   companyRegisterError: string | null = null;
@@ -40,11 +43,89 @@ export class VendorPageComponent {
   deleteError: string | null = null;
   departmentCount = 0;
 
+  // 保険料表管理用のプロパティ
+  selectedMasterYear: string = '';
+  selectedMasterPrefectureId: string = '';
+  selectedYear: string = '';
+  masterGrades: any = null;
+  isLoadingMasterGrades: boolean = false;
+  masterGradesError: string | null = null;
+  isEditMode = false;
+  editGrades: any = {};
+  yearOptions: string[] = [];
+  prefectures: { id: string; name: string }[] = [
+    { id: '北海道', name: '北海道' },
+    { id: '青森', name: '青森県' },
+    { id: '岩手', name: '岩手県' },
+    { id: '宮城', name: '宮城県' },
+    { id: '秋田', name: '秋田県' },
+    { id: '山形', name: '山形県' },
+    { id: '福島', name: '福島県' },
+    { id: '茨城', name: '茨城県' },
+    { id: '栃木', name: '栃木県' },
+    { id: '群馬', name: '群馬県' },
+    { id: '埼玉', name: '埼玉県' },
+    { id: '千葉', name: '千葉県' },
+    { id: '東京', name: '東京都' },
+    { id: '神奈川', name: '神奈川県' },
+    { id: '新潟', name: '新潟県' },
+    { id: '富山', name: '富山県' },
+    { id: '石川', name: '石川県' },
+    { id: '福井', name: '福井県' },
+    { id: '山梨', name: '山梨県' },
+    { id: '長野', name: '長野県' },
+    { id: '岐阜', name: '岐阜県' },
+    { id: '静岡', name: '静岡県' },
+    { id: '愛知', name: '愛知県' },
+    { id: '三重', name: '三重県' },
+    { id: '滋賀', name: '滋賀県' },
+    { id: '京都', name: '京都府' },
+    { id: '大阪', name: '大阪府' },
+    { id: '兵庫', name: '兵庫県' },
+    { id: '奈良', name: '奈良県' },
+    { id: '和歌山', name: '和歌山県' },
+    { id: '鳥取', name: '鳥取県' },
+    { id: '島根', name: '島根県' },
+    { id: '岡山', name: '岡山県' },
+    { id: '広島', name: '広島県' },
+    { id: '山口', name: '山口県' },
+    { id: '徳島', name: '徳島県' },
+    { id: '香川', name: '香川県' },
+    { id: '愛媛', name: '愛媛県' },
+    { id: '高知', name: '高知県' },
+    { id: '福岡', name: '福岡県' },
+    { id: '佐賀', name: '佐賀県' },
+    { id: '長崎', name: '長崎県' },
+    { id: '熊本', name: '熊本県' },
+    { id: '大分', name: '大分県' },
+    { id: '宮崎', name: '宮崎県' },
+    { id: '鹿児島', name: '鹿児島県' },
+    { id: '沖縄', name: '沖縄県' }
+  ];
+  selectedFile: File | null = null;
+  sheetNames: string[] = [];
+  private _selectedSheetName: string = '';
+  isImporting: boolean = false;
+  importError: string | null = null;
+
+  public editRates: {
+    ippan_rate: number;
+    tokutei_rate: number;
+    kousei_rate: number;
+    kaigo_rate: number;
+  } = {
+    ippan_rate: 0,
+    tokutei_rate: 0,
+    kousei_rate: 0,
+    kaigo_rate: 0
+  };
+
   constructor(
     private fb: FormBuilder,
     private firestore: Firestore,
     private auth: Auth,
-    private http: HttpClient
+    private http: HttpClient,
+    private insurancePremiumService: InsurancePremiumService
   ) {
     this.companyForm = this.fb.group({
       company_name: ['', Validators.required],
@@ -120,6 +201,21 @@ export class VendorPageComponent {
           this.deleteCompanyId = snapshot.docs[0].id;
         }
       });
+  }
+
+  ngOnInit() {
+    // 年度オプションの設定（現在の年度から前後5年分）
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth();
+    const fiscalYear = currentMonth >= 3 ? currentYear : currentYear - 1;
+    
+    this.yearOptions = Array.from({ length: 11 }, (_, i) => 
+      (fiscalYear - 5 + i).toString()
+    );
+
+    // 初期値の設定
+    this.selectedMasterYear = fiscalYear.toString();
+    this.selectedYear = fiscalYear.toString();
   }
 
   async registerCompany() {
@@ -333,7 +429,11 @@ export class VendorPageComponent {
 
   // 都道府県名から都道府県ID+短縮名を取得する関数
   getPrefectureId(prefectureName: string): string {
-    // 「県」「府」「都」「道」を除去して短縮名を返す
+    // 京都の場合は「京都」を返す
+    if (prefectureName.includes('京都')) {
+      return '京都';
+    }
+    // その他の都道府県は「都」「道」「府」「県」を除去して短縮名を返す
     return prefectureName.replace(/[都道府県]/g, '');
   }
 
@@ -345,7 +445,8 @@ export class VendorPageComponent {
       if (response && response.results && response.results[0]) {
         const address = response.results[0];
         const fullAddress = `${address.address1}${address.address2}${address.address3}`;
-        const prefectureId = this.getPrefectureId(address.address1);
+        // 京都府の場合は「京都」を返す
+        const prefectureId = address.address1 === '京都府' ? '京都' : this.getPrefectureId(address.address1);
         this.companyForm.patchValue({ 
           address: fullAddress,
           prefecture_id: prefectureId
@@ -364,7 +465,8 @@ export class VendorPageComponent {
       if (response && response.results && response.results[0]) {
         const address = response.results[0];
         const fullAddress = `${address.address1}${address.address2}${address.address3}`;
-        const prefectureId = this.getPrefectureId(address.address1);
+        // 京都府の場合は「京都」を返す
+        const prefectureId = address.address1 === '京都府' ? '京都' : this.getPrefectureId(address.address1);
         this.branchForm.patchValue({ 
           address: fullAddress,
           prefecture_id: prefectureId
@@ -392,4 +494,164 @@ export class VendorPageComponent {
       this.searchCompanyAddressByPostalCode(cleanPostalCode);
     }
   }
+
+  // タブ切り替えメソッド
+  selectTab(tab: string) {
+    this.selectedTab = tab;
+  }
+
+  // 年度または都道府県が変更された時の処理
+  async onMasterSelectionChange() {
+    if (!this.selectedMasterYear || !this.selectedMasterPrefectureId) {
+      this.masterGrades = null;
+      this.masterGradesError = null;
+      return;
+    }
+
+    this.isLoadingMasterGrades = true;
+    this.masterGradesError = null;
+
+    try {
+      // 新しいFirestoreの構造に合わせてデータを取得
+      const gradesRef = collection(
+        this.firestore,
+        `prefectures/${this.selectedMasterPrefectureId}/insurance_premiums/${this.selectedMasterYear}/grades`
+      );
+      const gradesSnapshot = await getDocs(gradesRef);
+
+      if (!gradesSnapshot.empty) {
+        // 取得したデータを整形
+        const gradesData: any = {};
+        gradesSnapshot.forEach(doc => {
+          gradesData[doc.id] = doc.data();
+        });
+        
+        this.masterGrades = gradesData;
+        this.editGrades = { ...this.masterGrades };
+      } else {
+        this.masterGradesError = 'データがありません';
+        this.masterGrades = null;
+      }
+    } catch (error) {
+      console.error('Error loading master grades:', error);
+      this.masterGradesError = 'データの読み込みに失敗しました';
+    } finally {
+      this.isLoadingMasterGrades = false;
+    }
+  }
+
+  enableEditMode() {
+    this.isEditMode = true;
+    this.editGrades = { ...this.masterGrades };
+  }
+
+  cancelEditMode() {
+    this.isEditMode = false;
+    this.editGrades = {};
+  }
+
+  // 保険料表データの保存処理も修正
+  async saveMasterGrades() {
+    if (!this.selectedMasterYear || !this.selectedMasterPrefectureId) return;
+
+    try {
+      const gradesRef = collection(
+        this.firestore,
+        `prefectures/${this.selectedMasterPrefectureId}/insurance_premiums/${this.selectedMasterYear}/grades`
+      );
+
+      // 各等級のデータを保存
+      for (const [gradeId, gradeData] of Object.entries(this.editGrades)) {
+        const gradeDocRef = doc(gradesRef, gradeId);
+        await setDoc(gradeDocRef, gradeData);
+      }
+
+      this.masterGrades = { ...this.editGrades };
+      this.isEditMode = false;
+    } catch (error) {
+      console.error('Error saving master grades:', error);
+      this.masterGradesError = 'データの保存に失敗しました';
+    }
+  }
+
+  // ファイル選択時の処理
+  onFileInputChange(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (input.files && input.files.length > 0) {
+      this.selectedFile = input.files[0];
+      this.sheetNames = [];
+      this._selectedSheetName = '';
+      
+      // Excelファイルのシート名を取得
+      const reader = new FileReader();
+      reader.onload = (e: any) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          this.sheetNames = workbook.SheetNames;
+        } catch (error) {
+          console.error('Error reading Excel file:', error);
+          this.importError = 'Excelファイルの読み込みに失敗しました';
+        }
+      };
+      reader.readAsArrayBuffer(this.selectedFile);
+    }
+  }
+
+  // インポート実行時の処理
+  async onImportClick(): Promise<void> {
+    if (!this.selectedFile || !this.selectedSheetName || !this.selectedYear) {
+      this.importError = 'ファイル、シート、年度を選択してください';
+      return;
+    }
+
+    this.isImporting = true;
+    this.importError = null;
+
+    try {
+      // シート名から都道府県IDを取得
+      const prefectureId = this.getPrefectureId(this.selectedSheetName);
+      
+      await this.insurancePremiumService.importExcelFile(
+        this.selectedFile,
+        prefectureId,
+        this.selectedYear,
+        this.selectedSheetName
+      );
+
+      // インポート後にデータを再読み込み
+      this.selectedMasterPrefectureId = prefectureId;
+      this.selectedMasterYear = this.selectedYear;
+      await this.onMasterSelectionChange();
+
+      // 入力フィールドをクリア
+      this.selectedFile = null;
+      this.sheetNames = [];
+      this._selectedSheetName = '';
+      const input = document.getElementById('excelFile') as HTMLInputElement;
+      if (input) input.value = '';
+
+    } catch (error: any) {
+      console.error('Error importing file:', error);
+      this.importError = error?.message || 'ファイルのインポートに失敗しました';
+    } finally {
+      this.isImporting = false;
+    }
+  }
+
+  get selectedSheetName(): string {
+    return this._selectedSheetName;
+  }
+
+  set selectedSheetName(value: string) {
+    this._selectedSheetName = value;
+  }
+
+  sortByGrade = (a: {key: string}, b: {key: string}): number => {
+    const getGradeNumber = (key: string) => {
+      const match = key.match(/\d+/);
+      return match ? parseInt(match[0]) : 0;
+    };
+    return getGradeNumber(a.key) - getGradeNumber(b.key);
+  };
 }

@@ -10,11 +10,19 @@
 
   <!-- 📊 ダッシュボードサマリー -->
   <div *ngIf="selectedTab === 'summary'">
-    <div style="margin-bottom: 1.2rem;">
-      <label style="font-weight: bold; color: #1976d2; margin-right: 1em;">事業所選択：</label>
-      <select [(ngModel)]="selectedDepartmentId" (ngModelChange)="onDepartmentChange($event)" style="padding: 0.5em 1em; border-radius: 6px; border: 1px solid #e3eaf3; min-width: 180px;">
-        <option *ngFor="let dept of departmentList" [value]="dept.department_id">{{ dept.department_id }}（{{ dept.department_name }}）</option>
-      </select>
+    <div style="margin-bottom: 1.2rem; display: flex; gap: 1.5rem; align-items: center;">
+      <div>
+        <label style="font-weight: bold; color: #1976d2; margin-right: 1em;">事業所選択：</label>
+        <select [(ngModel)]="selectedDepartmentId" (ngModelChange)="onDepartmentChange($event)" style="padding: 0.5em 1em; border-radius: 6px; border: 1px solid #e3eaf3; min-width: 180px;">
+          <option *ngFor="let dept of departmentList" [value]="dept.department_id">{{ dept.department_id }}（{{ dept.department_name }}）</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-weight: bold; color: #1976d2; margin-right: 1em;">対象年月：</label>
+        <select [(ngModel)]="selectedYearMonth" (ngModelChange)="onYearMonthChange($event)" style="padding: 0.5em 1em; border-radius: 6px; border: 1px solid #e3eaf3; min-width: 180px;">
+          <option *ngFor="let ym of yearMonthOptions" [value]="ym">{{ ym }}</option>
+        </select>
+      </div>
     </div>
     <div class="summary-cards">
       <div class="summary-card">
