@@ -795,3 +795,29 @@ button:hover {
   color: #c62828;
   border: 1px solid #ef9a9a;
 }
+
+// 情報ボタンのスタイル
+.info-button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 0.5rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #1976d2;
+  transition: color 0.2s;
+  box-shadow: none;
+
+  mat-icon {
+    font-size: 1.2rem;
+    width: 1.2rem;
+    height: 1.2rem;
+  }
+
+  &:hover {
+    color: #1256a3;
+    background: none;
+  }
+}

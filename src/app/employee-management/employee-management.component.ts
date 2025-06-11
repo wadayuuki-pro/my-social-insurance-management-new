@@ -284,16 +284,6 @@ export class EmployeeManagementComponent implements OnInit {
       return '新入社員です';
     }
 
-    // どこか1つでも「休職中です。有給か無給かを確認し判断してください」が含まれていたらそれだけ返す
-    const leaveMsg = '休職中です。有給か無給かを確認し判断してください';
-    if (
-      (emp.healthInsuranceRequiredActions && emp.healthInsuranceRequiredActions.includes(leaveMsg)) ||
-      (emp.nursingInsuranceRequiredActions && emp.nursingInsuranceRequiredActions.includes(leaveMsg)) ||
-      (emp.pensionInsuranceRequiredActions && emp.pensionInsuranceRequiredActions.includes(leaveMsg))
-    ) {
-      return leaveMsg;
-    }
-
     // どちらかのrequiredActionsが「短時間労働者です」だけの場合はそれだけ返す
     const isShortTimeOnly = (arr: string[] | undefined) =>
       arr && arr.length === 1 && arr[0] === '短時間労働者です';
@@ -334,6 +324,15 @@ export class EmployeeManagementComponent implements OnInit {
       return overseasMsg;
     }
 
+    const secondmentMsg = '出向中です';
+if (
+  (emp.healthInsuranceRequiredActions && emp.healthInsuranceRequiredActions.includes(secondmentMsg)) ||
+  (emp.nursingInsuranceRequiredActions && emp.nursingInsuranceRequiredActions.includes(secondmentMsg)) ||
+  (emp.pensionInsuranceRequiredActions && emp.pensionInsuranceRequiredActions.includes(secondmentMsg))
+) {
+  return secondmentMsg;
+}
+
     // --- ここから「届け出を作成してください。」の重複排除 ---
     const todokeMsg = '届け出を作成してください。';
     const allActions = [
@@ -352,6 +351,14 @@ export class EmployeeManagementComponent implements OnInit {
     // 役員の場合は「役員です」のみを表示
     if (emp.employment_type === '役員') {
       return '役員です';
+    }
+    // 海外赴任の場合は「海外赴任中です」のみを表示
+    if (emp.status === '海外赴任') {
+      return '海外赴任中です。';
+    }
+    // 出向中の場合は「出向中です」のみを表示
+    if (emp.status === '出向中') {
+      return '出向中です';
     }
 
     let summary = '';
@@ -419,7 +426,8 @@ export class EmployeeManagementComponent implements OnInit {
       sort1_field: [''],
       sort1_order: ['asc'],
       sort2_field: [''],
-      sort2_order: ['asc']
+      sort2_order: ['asc'],
+      office_id: [''],
     });
     this.detailForm = this.fb.group({});
     this.newEmployeeForm = this.fb.group({
@@ -559,7 +567,6 @@ export class EmployeeManagementComponent implements OnInit {
           const docSnap = snapshot.docs[0];
           const data = docSnap.data();
           this.currentUserRole = data['role'] || '';
-          console.log('現在のユーザー権限:', this.currentUserRole);
           // ドキュメントIDを取得
           const employeeDocId = docSnap.id;
           // sensitive_idsコレクションの同じIDのmyNumberを確認
@@ -568,7 +575,6 @@ export class EmployeeManagementComponent implements OnInit {
         } else {
           this.currentUserRole = '';
           this.isMyNumberRegistered = false;
-          console.log('ユーザー情報が見つかりませんでした');
         }
       }
     });
@@ -656,8 +662,8 @@ export class EmployeeManagementComponent implements OnInit {
       );
     }
 
-    if (searchValues.department) {
-      filtered = filtered.filter(emp => (emp.department && emp.department.trim() ? emp.department : '-') === searchValues.department);
+    if (searchValues.department_id) {
+      filtered = filtered.filter(emp => emp.department_id === searchValues.department_id);
     }
 
     if (searchValues.employment_type) {
@@ -680,6 +686,10 @@ export class EmployeeManagementComponent implements OnInit {
       filtered = filtered.filter(emp => emp.has_dependents === (searchValues.has_dependents === 'true'));
     }
 
+    if (searchValues.office_id) {
+      filtered = filtered.filter(emp => emp.department_id === searchValues.office_id);
+    }
+
     // ソート条件の適用
     if (searchValues.sort1_field) {
       filtered.sort((a, b) => {
@@ -687,8 +697,7 @@ export class EmployeeManagementComponent implements OnInit {
         let valueB = b[searchValues.sort1_field];
 
         // 日付の場合の特別処理
-        if (searchValues.sort1_field === 'employment_start_date' || 
-            searchValues.sort1_field === 'updated_at') {
+        if (searchValues.sort1_field === 'updated_at') {
           valueA = valueA?.toDate?.() || valueA;
           valueB = valueB?.toDate?.() || valueB;
         }
@@ -712,8 +721,7 @@ export class EmployeeManagementComponent implements OnInit {
         let valueB = b[searchValues.sort2_field];
 
         // 日付の場合の特別処理
-        if (searchValues.sort2_field === 'employment_start_date' || 
-            searchValues.sort2_field === 'updated_at') {
+        if (searchValues.sort2_field === 'updated_at') {
           valueA = valueA?.toDate?.() || valueA;
           valueB = valueB?.toDate?.() || valueB;
         }
@@ -747,7 +755,8 @@ export class EmployeeManagementComponent implements OnInit {
       sort1_field: '',
       sort1_order: 'asc',
       sort2_field: '',
-      sort2_order: 'asc'
+      sort2_order: 'asc',
+      office_id: '',
     });
     this.filteredEmployees = [...this.employees];
   }
@@ -1057,10 +1066,10 @@ export class EmployeeManagementComponent implements OnInit {
       employmentStatus: '',
       fuyouStartDate: '',
       isCurrentlyDependent: true,
-      note: '',
-      myNumber: ''
+      note: ''
     });
     this.editingDependentIndex = null;
+    this.editingNewEmployeeDependentIndex = null; // 追加
     this.showDependentModal = true;
   }
 
@@ -1280,6 +1289,8 @@ export class EmployeeManagementComponent implements OnInit {
     try {
       // 所属会社IDを有効化して値を取得
       this.newEmployeeForm.get('company_id')?.enable();
+      // employee_codeフィールドを有効化して値を取得
+      this.newEmployeeForm.get('employee_code')?.enable();
       // フォームの値を取得
       const formValue = this.newEmployeeForm.value;
       // 保存前に等級・標準報酬月額を再取得
@@ -1334,9 +1345,10 @@ export class EmployeeManagementComponent implements OnInit {
         status: formValue.status || '在籍中'
       };
       this.newEmployeeForm.get('company_id')?.disable();
+      this.newEmployeeForm.get('employee_code')?.disable();
       const employeesCol = collection(this.firestore, 'employees');
       await addDoc(employeesCol, newEmployeeData);
-      alert(`新規メンバーを追加しました。\n初期パスワード: ${generatedPassword}\n\n※このパスワードはこの画面でのみ表示されます。`);
+      alert(`新規メンバーを追加しました。`);
       this.showNewEmployeeModal = false;
       await this.loadEmployees();
     } catch (error: any) {
@@ -2227,19 +2239,18 @@ if (duplicateCodes.length > 0) {
       if (!snapshot.empty) {
         const docSnap = snapshot.docs[0];
         const employeeDocId = docSnap.id;
-        console.log('現在ログイン中のemployeesコレクションのドキュメントID:', employeeDocId);
         // sensitive_idsコレクションの同じIDも表示
         const sensitiveDoc = await getDoc(doc(this.firestore, 'sensitive_ids', employeeDocId));
         if (sensitiveDoc.exists()) {
-          console.log('対応するsensitive_idsコレクションのドキュメントID:', employeeDocId);
+          // console.log('対応するsensitive_idsコレクションのドキュメントID:', employeeDocId);
         } else {
-          console.log('対応するsensitive_idsコレクションのドキュメントは存在しません:', employeeDocId);
+          // console.log('対応するsensitive_idsコレクションのドキュメントは存在しません:', employeeDocId);
         }
       } else {
-        console.log('ログインユーザーのemployeesコレクションのドキュメントが見つかりませんでした');
+        // console.log('ログインユーザーのemployeesコレクションのドキュメントが見つかりませんでした');
       }
     } else {
-      console.log('ユーザー情報または会社IDが取得できませんでした');
+      // console.log('ユーザー情報または会社IDが取得できませんでした');
     }
   }
 
@@ -2469,6 +2480,7 @@ if (duplicateCodes.length > 0) {
       };
     }
 
+
     // 退職者は適用外
     if (this.isRetiredEmployee(employee)) {
       return {
@@ -2504,12 +2516,24 @@ if (duplicateCodes.length > 0) {
       requiredActions: []
     };
 
-    // 75歳以上は適用外
-    const age = this.calculateAge(employee.date_of_birth);
-    if (age >= 75) {
-      result.reason = '75歳以上のため健康保険適用外';
-      result.status = 'out';
+    if (!employee.employment_type) {
+      result.isEligible = true;
       return result;
+    }
+
+    // 75歳以上は適用外 → 誕生月から適用外に修正
+    if (employee.date_of_birth) {
+      const birthDate = new Date(employee.date_of_birth);
+      const seventyFifthBirthday = new Date(birthDate);
+      seventyFifthBirthday.setFullYear(birthDate.getFullYear() + 75);
+      // 判定対象年月の月初
+      const targetMonthStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+      // 75歳の誕生月の月初以降は適用外
+      if (targetMonthStart >= new Date(seventyFifthBirthday.getFullYear(), seventyFifthBirthday.getMonth(), 1)) {
+        result.reason = '75歳の誕生月から健康保険適用外';
+        result.status = 'out';
+        return result;
+      }
     }
 
     // 正社員は常に適用
@@ -2582,8 +2606,12 @@ if (duplicateCodes.length > 0) {
     if (employee.status === '海外赴任') {
       result.requiredActions?.push('海外赴任中です。');
     }
+    if (employee.status === '出向中') {
+      result.requiredActions?.push('出向中です。');
+    }
     return result;
   }
+
 
   // 介護保険の適用判定
   checkNursingInsuranceEligibility(employee: any): InsuranceEligibility {
@@ -2749,13 +2777,25 @@ if (duplicateCodes.length > 0) {
       reason: '',
       requiredActions: []
     };
-
-    // 70歳以上は適用外
-    const age = this.calculateAge(employee.date_of_birth);
-    if (age >= 70) {
-      result.reason = '70歳以上のため適用外';
-      result.status = 'out';
+    
+    if (!employee.employment_type) {
+      result.isEligible = true;
       return result;
+    }
+
+    // 70歳以上は適用外 → 誕生月から適用外に修正
+    if (employee.date_of_birth) {
+      const birthDate = new Date(employee.date_of_birth);
+      const seventiethBirthday = new Date(birthDate);
+      seventiethBirthday.setFullYear(birthDate.getFullYear() + 70);
+      // 判定対象年月の月初
+      const targetMonthStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+      // 70歳の誕生月の月初以降は適用外
+      if (targetMonthStart >= new Date(seventiethBirthday.getFullYear(), seventiethBirthday.getMonth(), 1)) {
+        result.reason = '70歳の誕生月から厚生年金適用外';
+        result.status = 'out';
+        return result;
+      }
     }
 
     // 正社員は常に適用
@@ -3213,6 +3253,90 @@ if (duplicateCodes.length > 0) {
       (elements[index + 1] as HTMLElement).focus();
       event.preventDefault();
     }
+  }
+
+  // --- 追加 ---
+  showDetailDependentModal = false;
+  showNewEmployeeDependentModal = false;
+
+  // 詳細モーダル用 扶養者追加・編集
+  openDetailDependentModal(index?: number) {
+    if (typeof index === 'number') {
+      // 編集
+      const dep = this.dependentsArray.at(index).value;
+      this.dependentForm.setValue({
+        name: dep.name || '',
+        relationship: dep.relationship || '',
+        birthdate: dep.birthdate || '',
+        gender: dep.gender || '',
+        cohabitation: dep.cohabitation ?? false,
+        annualIncome: dep.annualIncome ?? '',
+        employmentStatus: dep.employmentStatus || '',
+        fuyouStartDate: dep.fuyouStartDate || '',
+        isCurrentlyDependent: dep.isCurrentlyDependent ?? true,
+        note: dep.note || ''
+      });
+      this.editingDependentIndex = index;
+    } else {
+      // 新規
+      this.dependentForm.reset({
+        name: '',
+        relationship: '',
+        birthdate: '',
+        gender: '',
+        cohabitation: false,
+        annualIncome: '',
+        employmentStatus: '',
+        fuyouStartDate: '',
+        isCurrentlyDependent: true,
+        note: ''
+      });
+      this.editingDependentIndex = null;
+    }
+    this.showDetailDependentModal = true;
+  }
+  closeDetailDependentModal() {
+    this.showDetailDependentModal = false;
+  }
+
+  // 新規メンバー追加用 扶養者追加・編集
+  openNewEmployeeDependentModal(index?: number) {
+    if (typeof index === 'number') {
+      // 編集
+      const dep = this.newEmployeeDependentsArray.at(index).value;
+      this.dependentForm.setValue({
+        name: dep.name || '',
+        relationship: dep.relationship || '',
+        birthdate: dep.birthdate || '',
+        gender: dep.gender || '',
+        cohabitation: dep.cohabitation ?? false,
+        annualIncome: dep.annualIncome ?? '',
+        employmentStatus: dep.employmentStatus || '',
+        fuyouStartDate: dep.fuyouStartDate || '',
+        isCurrentlyDependent: dep.isCurrentlyDependent ?? true,
+        note: dep.note || ''
+      });
+      this.editingNewEmployeeDependentIndex = index;
+    } else {
+      // 新規
+      this.dependentForm.reset({
+        name: '',
+        relationship: '',
+        birthdate: '',
+        gender: '',
+        cohabitation: false,
+        annualIncome: '',
+        employmentStatus: '',
+        fuyouStartDate: '',
+        isCurrentlyDependent: true,
+        note: ''
+      });
+      this.editingNewEmployeeDependentIndex = null;
+    }
+    this.showNewEmployeeDependentModal = true;
+  }
+  closeNewEmployeeDependentModal() {
+    this.showNewEmployeeDependentModal = false;
   }
 }
 

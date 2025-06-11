@@ -65,7 +65,6 @@ export class AnalysisReportComponent {
   monthlyHealthInsuranceWithdrawalData: { [key: string]: number } = {};
   monthlyPensionWithdrawalData: { [key: string]: number } = {};
   // 月額変更・賞与支給の推移用のプロパティ
-  monthlySalaryChangeData: { [key: string]: number } = {};
   monthlyBonusData: { [key: string]: number } = {};
   chartLabels: string[] = [];
 
@@ -80,13 +79,16 @@ export class AnalysisReportComponent {
   branchCompanyBurden: number[] = [];
   branchEmployeeBurden: number[] = [];
 
-  // 従業員ステータス別人数（6区分）
+  // 従業員ステータス別人数（9区分）
   statusActive: number = 0;
   statusLeave: number = 0;
   statusMaternity: number = 0;
+  statusMaternityMultiple: number = 0;  // 産休中（多胎妊娠）
   statusChildcare: number = 0;
   statusRetiring: number = 0;
   statusRetired: number = 0;
+  statusOverseas: number = 0;  // 海外赴任中
+  statusSecondment: number = 0;  // 出向中
 
   public user$;
   public isAuthReady$;
@@ -272,37 +274,60 @@ export class AnalysisReportComponent {
       this.statusActive = 0;
       this.statusLeave = 0;
       this.statusMaternity = 0;
+      this.statusMaternityMultiple = 0;
       this.statusChildcare = 0;
       this.statusRetiring = 0;
       this.statusRetired = 0;
+      this.statusOverseas = 0;
+      this.statusSecondment = 0;
       return;
     }
     const employeesCol = collection(this.firestore, 'employees');
     const q = query(employeesCol, where('company_id', '==', this.companyId), where('department_id', '==', this.selectedDepartmentId));
     const snapshot = await getDocs(q);
-    let active = 0, leave = 0, maternity = 0, childcare = 0, retiring = 0, retired = 0;
+    let active = 0, leave = 0, maternity = 0, maternityMultiple = 0, childcare = 0, retiring = 0, retired = 0, overseas = 0, secondment = 0;
     snapshot.forEach(doc => {
       const status = (doc.data()['status'] || '').trim();
-      if (status === '在籍中') {
-        active++;
-      } else if (status === '休職中') {
-        leave++;
-      } else if (status === '産休中') {
-        maternity++;
-      } else if (status === '育休中') {
-        childcare++;
-      } else if (status === '退職予定') {
-        retiring++;
-      } else if (status === '退職' || status === '退職済み') {
-        retired++;
+      switch (status) {
+        case '在籍中':
+          active++;
+          break;
+        case '休職中':
+          leave++;
+          break;
+        case '産休中':
+          maternity++;
+          break;
+        case '産休中（多胎妊娠）':
+          maternityMultiple++;
+          break;
+        case '育休中':
+          childcare++;
+          break;
+        case '退職予定':
+          retiring++;
+          break;
+        case '退職':
+        case '退職済み':
+          retired++;
+          break;
+        case '海外赴任中':
+          overseas++;
+          break;
+        case '出向中':
+          secondment++;
+          break;
       }
     });
     this.statusActive = active;
     this.statusLeave = leave;
     this.statusMaternity = maternity;
+    this.statusMaternityMultiple = maternityMultiple;
     this.statusChildcare = childcare;
     this.statusRetiring = retiring;
     this.statusRetired = retired;
+    this.statusOverseas = overseas;
+    this.statusSecondment = secondment;
   }
 
   async loadMonthlyEnrollmentData() {
@@ -400,35 +425,7 @@ export class AnalysisReportComponent {
 
     // 各月のデータを初期化
     months.forEach(month => {
-      this.monthlySalaryChangeData[month] = 0;
       this.monthlyBonusData[month] = 0;
-    });
-
-    // 月額変更データの取得（operation_logs）
-    const operationLogsCol = collection(this.firestore, 'operation_logs');
-    const operationLogsQuery = query(
-      operationLogsCol,
-      where('company_id', '==', this.companyId),
-      where('operation_type', '==', 'salary')
-    );
-    const operationLogsSnapshot = await getDocs(operationLogsQuery);
-
-    operationLogsSnapshot.forEach(doc => {
-      const data = doc.data();
-      const timestamp = data['timestamp']?.toDate();
-      if (timestamp) {
-        const y = timestamp.getFullYear();
-        const m = (timestamp.getMonth() + 1).toString().padStart(2, '0');
-        const month = `${y}-${m}`;
-        console.log('timestamp:', timestamp, '→ month:', month);
-        console.log('months配列:', months);
-        if (this.monthlySalaryChangeData[month] !== undefined) {
-          // 部署フィルタ
-          if (!this.selectedDepartmentId || (data['department_id'] === this.selectedDepartmentId)) {
-            this.monthlySalaryChangeData[month]++;
-          }
-        }
-      }
     });
 
     // 賞与データの取得（employees/salaries）
@@ -472,48 +469,42 @@ export class AnalysisReportComponent {
       department_id: doc.data()['department_id'],
       department_name: doc.data()['department_name'] || doc.data()['department_id']
     }));
+
     // 各拠点ごとに保険料合計を集計
     const healthTotals: number[] = [];
     const pensionTotals: number[] = [];
     const kaigoTotals: number[] = [];
     const labels: string[] = [];
+
     // 選択された事業所がある場合はその事業所のみ、なければ全事業所
     const targetBranches = this.selectedDepartmentId 
       ? branches.filter(b => b.department_id === this.selectedDepartmentId)
       : branches.slice(0, Math.min(3, branches.length));
+
     for (const branch of targetBranches) {
       labels.push(branch.department_name);
-      let health = 0, pension = 0, kaigo = 0;
-      // 拠点ごとの従業員取得
-      const employeesCol = collection(this.firestore, 'employees');
-      const eq = query(employeesCol, where('company_id', '==', this.companyId), where('department_id', '==', branch.department_id));
-      const empSnap = await getDocs(eq);
-      for (const doc of empSnap.docs) {
-        const empId = doc.id;
-        const premiumsCol = collection(this.firestore, 'employees', empId, 'insurance_premiums');
-        const premiumsSnap = await getDocs(premiumsCol);
-        for (const d of premiumsSnap.docs) {
-          const data = d.data() as any;
-          if (data && data.premiums) {
-            // 健康保険
-            if (data.premiums.ippan && data.premiums.ippan.is_initial === true) {
-              health += Number(data.premiums.ippan.full || 0);
-            }
-            // 介護保険
-            if (data.premiums.kaigo && data.premiums.kaigo.is_applicable === true) {
-              kaigo += Number(data.premiums.kaigo.full || 0);
-            }
-            // 厚生年金
-            if (data.premiums.kousei && data.premiums.kousei.is_applicable === true) {
-              pension += Number(data.premiums.kousei.full || 0);
-            }
-          }
-        }
+      
+      // burden_ratiosから保険料データを取得
+      const burdenRatiosDoc = await getDoc(doc(this.firestore, 'departments', branch.department_id, 'burden_ratios', this.selectedYearMonth));
+      if (burdenRatiosDoc.exists()) {
+        const data = burdenRatiosDoc.data();
+        // 健康保険料（介護保険込み）
+        const healthTotal = (data['health_insurance_company_burden'] || 0) + (data['health_insurance_employee_burden'] || 0);
+        // 厚生年金保険料
+        const pensionTotal = (data['pension_insurance_company_burden'] || 0) + (data['pension_insurance_employee_burden'] || 0);
+        // 介護保険料
+        const kaigoTotal = (data['kaigo_insurance_company_burden'] || 0) + (data['kaigo_insurance_employee_burden'] || 0);
+
+        healthTotals.push(healthTotal);
+        pensionTotals.push(pensionTotal);
+        kaigoTotals.push(kaigoTotal);
+      } else {
+        healthTotals.push(0);
+        pensionTotals.push(0);
+        kaigoTotals.push(0);
       }
-      healthTotals.push(health);
-      pensionTotals.push(pension);
-      kaigoTotals.push(kaigo);
     }
+
     this.branchLabels = labels;
     this.branchHealthTotals = healthTotals;
     this.branchPensionTotals = pensionTotals;
@@ -738,19 +729,6 @@ export class AnalysisReportComponent {
           labels: this.chartLabels,
           datasets: [
             {
-              label: '月額変更',
-              data: this.chartLabels.map(label => {
-                const month = label.replace('/', '-');
-                return this.monthlySalaryChangeData[month] || 0;
-              }),
-              borderColor: '#388e3c',
-              backgroundColor: 'rgba(56,142,60,0.15)',
-              pointBackgroundColor: '#388e3c',
-              pointRadius: 5,
-              fill: true,
-              tension: 0.3
-            },
-            {
               label: '賞与支給',
               data: this.chartLabels.map(label => {
                 const month = label.replace('/', '-');
@@ -769,7 +747,7 @@ export class AnalysisReportComponent {
           responsive: false,
           plugins: {
             legend: { display: true, position: 'top' },
-            title: { display: true, text: '月額変更・賞与支給の推移', font: { size: 18 } }
+            title: { display: true, text: '賞与支給の推移', font: { size: 18 } }
           },
           scales: {
             y: { 
@@ -864,12 +842,34 @@ export class AnalysisReportComponent {
       this.chartInstances['barChart2'] = new (window as any).Chart(ctx6, {
         type: 'bar',
         data: {
-          labels: ['在籍中', '休職中', '産休中', '育休中', '退職予定', '退職'],
+          labels: ['在籍中', '休職中', '産休中', '産休中（多胎妊娠）', '育休中', '海外赴任中', '出向中', '退職予定', '退職'],
           datasets: [
             {
               label: '人数',
-              data: [this.statusActive, this.statusLeave, this.statusMaternity, this.statusChildcare, this.statusRetiring, this.statusRetired],
-              backgroundColor: ['#1976d2', '#ffb300', '#f06292', '#64b5f6', '#8d6e63', '#e65100']
+              data: [
+                this.statusActive,
+                this.statusLeave,
+                this.statusMaternity,
+                this.statusMaternityMultiple,
+                this.statusChildcare,
+                this.statusOverseas,
+                this.statusSecondment,
+                this.statusRetiring,
+                this.statusRetired
+              ],
+              backgroundColor: [
+                '#1976d2',  // 在籍中
+                '#ffb300',  // 休職中
+                '#f06292',  // 産休中
+                '#ec407a',  // 産休中（多胎妊娠）
+                '#64b5f6',  // 育休中
+                '#7b1fa2',  // 海外赴任中
+                '#00897b',  // 出向中
+                '#8d6e63',  // 退職予定
+                '#e65100'   // 退職
+              ],
+              borderColor: '#fff',
+              borderWidth: 1
             }
           ]
         },
@@ -877,11 +877,32 @@ export class AnalysisReportComponent {
           responsive: false,
           plugins: {
             legend: { display: false },
-            title: { display: true, text: '従業員ステータス別人数', font: { size: 18 } }
+            title: { display: true, text: '従業員ステータス別人数', font: { size: 18 } },
+            tooltip: {
+              callbacks: {
+                label: function(context: any) {
+                  const label = context.label || '';
+                  const value = context.parsed.y;
+                  return `${label}: ${value}名`;
+                }
+              }
+            }
           },
           scales: {
-            y: { beginAtZero: true, title: { display: true, text: '人数' } },
-            x: { title: { display: true, text: 'ステータス' } }
+            y: { 
+              beginAtZero: true, 
+              title: { display: true, text: '人数' },
+              ticks: {
+                stepSize: 1
+              }
+            },
+            x: { 
+              title: { display: true, text: 'ステータス' },
+              ticks: {
+                maxRotation: 45,
+                minRotation: 45
+              }
+            }
           }
         }
       });

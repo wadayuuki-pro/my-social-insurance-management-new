@@ -23,7 +23,7 @@
   <h1>保険料管理</h1>
   <div class="tab-header">
     <button [class.active]="selectedTab === 'calculation'" (click)="selectTab('calculation')">💼 保険料計算</button>
-    <button [class.active]="selectedTab === 'ratio'" (click)="selectTab('ratio')">⚖️ 負担比率</button>    
+    <button [class.active]="selectedTab === 'ratio'" (click)="selectTab('ratio')">⚖️ 保険料負担内訳</button>    
     <button [class.active]="selectedTab === 'history'" (click)="selectTab('history')">📜 履歴閲覧</button>
   </div>
 
@@ -189,6 +189,24 @@
                   </td>
                 </tr>
                 <tr>
+                  <td>介護保険料（全額）</td>
+                  <td>
+                    <ng-container *ngIf="_lastInsuranceApplicable.tokutei; else notApplicableKaigo1">
+                      {{ getDisplayValue(calculationResult.kaigoFull) | number }}円
+                    </ng-container>
+                    <ng-template #notApplicableKaigo1>-</ng-template>
+                  </td>
+                </tr>
+                <tr>
+                  <td>介護保険料（半額）</td>
+                  <td>
+                    <ng-container *ngIf="_lastInsuranceApplicable.tokutei; else notApplicableKaigo2">
+                      {{ getDisplayValue(calculationResult.kaigoHalf) | number:'1.0-0' }}円
+                    </ng-container>
+                    <ng-template #notApplicableKaigo2>-</ng-template>
+                  </td>
+                </tr>
+                <tr>
                   <td>厚生年金保険料（全額）</td>
                   <td>
                     <ng-container *ngIf="_lastInsuranceApplicable.kousei; else notApplicable3">{{ selectedGradeInfo?.kousei?.full | number }}円</ng-container>
@@ -338,7 +356,7 @@
     </ng-container>
 
     <ng-container *ngIf="selectedTab === 'ratio'">
-      <h2>負担比率</h2>
+      <h2>保険料負担内訳</h2>
       <div class="section burden-ratio-section">
         <div class="form-group">
           <label for="department-ratio">事業所（部署）</label>
@@ -439,8 +457,8 @@
                   <td>{{ row.ippanCompany.gt(0) ? (row.ippanCompany.toNumber() | number) : '' }}</td>
                   <td>{{ row.tokuteiEmployee.gt(0) ? (row.tokuteiEmployee.toNumber() | number) : '' }}</td>
                   <td>{{ row.tokuteiCompany.gt(0) ? (row.tokuteiCompany.toNumber() | number) : '' }}</td>
-                  <td>{{ row.kaigoEmployee?.gt(0) ? (row.kaigoEmployee.toNumber() | number) : '' }}</td>
-                  <td>{{ row.kaigoCompany?.gt(0) ? (row.kaigoCompany.toNumber() | number) : '' }}</td>
+                  <td>{{ row.kaigoEmployee.gt(0) ? (row.kaigoEmployee.toNumber() | number) : '' }}</td>
+                  <td>{{ row.kaigoCompany.gt(0) ? (row.kaigoCompany.toNumber() | number) : '' }}</td>
                   <td>{{ row.kouseiEmployee.gt(0) ? (row.kouseiEmployee.toNumber() | number) : '' }}</td>
                   <td>{{ row.kouseiCompany.gt(0) ? (row.kouseiCompany.toNumber() | number) : '' }}</td>
                   <td>{{ row.totalEmployee.toNumber() | number }}</td>

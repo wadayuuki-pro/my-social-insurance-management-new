@@ -41,7 +41,7 @@ export class DashboardComponent implements OnInit {
       // ログアウト後はログインページにリダイレクト
       this.router.navigate(['/login']);
     } catch (error) {
-      console.error('ログアウト中にエラーが発生しました:', error);
+      // console.error('ログアウト中にエラーが発生しました:', error);
     }
   }
 
@@ -50,7 +50,7 @@ export class DashboardComponent implements OnInit {
     this.isAuthReady$ = this.authService.isAuthReady$;
     // ログイン中のユーザーのメールアドレスをコンソールに表示
     this.user$.subscribe(user => {
-      console.log('ログイン中のユーザー:', user?.email);
+      // console.log('ログイン中のユーザー:', user?.email);
       // ユーザーがundefinedまたはnullの場合のみベンダーページを表示
       this.isVendor = (user === undefined || user === null);
     });

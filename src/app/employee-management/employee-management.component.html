@@ -142,6 +142,13 @@
                   <option value="false">無</option>
                 </select>
               </div>
+              <div class="search-item">
+                <label>事業所</label>
+                <select formControlName="office_id">
+                  <option value="">すべて</option>
+                  <option *ngFor="let office of offices" [value]="office.id">{{ office.name }}</option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -155,7 +162,6 @@
                   <option value="">選択なし</option>
                   <option value="employee_code">社員ID</option>
                   <option value="last_name_kanji">氏名</option>
-                  <option value="employment_start_date">勤務開始日</option>
                   <option value="updated_at">最終更新日</option>
                 </select>
                 <select formControlName="sort1_order">
@@ -169,7 +175,6 @@
                   <option value="">選択なし</option>
                   <option value="employee_code">社員ID</option>
                   <option value="last_name_kanji">氏名</option>
-                  <option value="employment_start_date">勤務開始日</option>
                   <option value="updated_at">最終更新日</option>
                 </select>
                 <select formControlName="sort2_order">
@@ -437,7 +442,7 @@
               <div class="dependents-container">
                 <div class="dependents-header">
                   <h3>扶養者一覧</h3>
-                  <button type="button" (click)="openDependentModal()" class="add-dependent-btn">
+                  <button type="button" (click)="openNewEmployeeDependentModal()" class="add-dependent-btn">
                     <span class="plus-icon">+</span>
                     扶養者を追加
                   </button>
@@ -698,7 +703,7 @@
                 <div class="dependents-container">
                   <div class="dependents-header">
                     <h3>扶養者一覧</h3>
-                    <button type="button" (click)="openDependentModal()" class="add-dependent-btn">
+                    <button type="button" (click)="openDetailDependentModal()" class="add-dependent-btn">
                       <span class="plus-icon">+</span>
                       扶養者を追加
                     </button>
@@ -798,13 +803,9 @@
                       <label>備考</label>
                       <input formControlName="note" class="dependent-input" placeholder="備考（任意）" />
                     </div>
-                    <div class="detail-row">
-                      <label>マイナンバー</label>
-                      <input formControlName="myNumber" class="dependent-input" placeholder="マイナンバー（任意/注意）" />
-                    </div>
                     <div style="display:flex; gap:1rem; margin-top:1rem;">
                       <button type="button" (click)="addDependentFromModal()" [disabled]="!dependentForm.valid">追加</button>
-                      <button type="button" (click)="closeDependentModal()" style="background:#b0bec5; color:#fff;">キャンセル</button>
+                      <button type="button" (click)="closeDetailDependentModal()" style="background:#b0bec5; color:#fff;">キャンセル</button>
                     </div>
                   </form>
                 </div>
@@ -1103,11 +1104,11 @@
       </div>
       <div *ngIf="insuranceOfficeEmployees.length === 0" style="color:#888; margin-top:2em;">該当する従業員がいません</div>
       <div class="judgement-info" style="margin-top:2em;">
-        <h3>判定について（主な判定基準）</h3>
+        <h3>判定について（主な判定基準と注意事項について）</h3>
         <ul style="margin-left:1.2em;">
           <li>
             <b>従業員情報の雇用形態を入力してください。</b><br>
-            なにも入力されていない場合は保険適用外になります。
+            なにも入力されていない場合は保険適用内になります。
           </li>
           <li>
             <b>短時間労働者（週20時間未満など）は原則として社会保険の適用外です。</b><br>
@@ -1130,6 +1131,10 @@
               <li>免除を受けるには、事業主を通じて「産前産後休業取得者申出書」「育児休業取得者申出書」等の提出が必要です。</li>
               
             </ul>
+          </li>
+          <li>
+            <b>賞与の免除判定について</b><br>
+            育休中の賞与については育休期間が連続して1カ月以上ある場合は免除となります。通常給与の判定と異なりますのでご注意ください。
           </li>
           <li>
             <b>実際の雇用契約や勤務実態に基づきます。</b><br>
@@ -1176,5 +1181,145 @@
         <li>2024年10月1日から社会保険の適用範囲が拡大しています。ご注意ください。</li>
       </ul>
     </div>
+  </div>
+</div>
+
+<!-- 新規メンバー追加用 扶養者追加モーダル -->
+<div class="employee-detail-modal" *ngIf="showNewEmployeeDependentModal">
+  <div class="employee-detail-modal-content" style="max-width:600px;">
+    <h2>{{ editingNewEmployeeDependentIndex !== null ? '扶養者情報の編集' : '扶養者情報の追加' }}</h2>
+    <form [formGroup]="dependentForm" style="display:flex; flex-direction:column; gap:0.7rem;">
+      <div class="detail-row">
+        <label>氏名</label>
+        <input formControlName="name" placeholder="例：山田 花子" class="dependent-input" />
+      </div>
+      <div class="detail-row">
+        <label>続柄</label>
+        <select formControlName="relationship" class="dependent-select">
+          <option value="">選択してください</option>
+          <option value="配偶者">配偶者</option>
+          <option value="子">子</option>
+          <option value="父母">父母</option>
+          <option value="その他">その他</option>
+        </select>
+      </div>
+      <div class="detail-row">
+        <label>生年月日</label>
+        <input formControlName="birthdate" type="date" class="dependent-input" />
+      </div>
+      <div class="detail-row">
+        <label>性別</label>
+        <select formControlName="gender" class="dependent-select">
+          <option value="">選択してください</option>
+          <option value="男性">男性</option>
+          <option value="女性">女性</option>
+        </select>
+      </div>
+      <div class="detail-row">
+        <label>同居</label>
+        <input type="checkbox" formControlName="cohabitation" />
+      </div>
+      <div class="detail-row">
+        <label>年収</label>
+        <input formControlName="annualIncome" type="number" min="0" class="dependent-input" placeholder="例：1200000" />
+      </div>
+      <div class="detail-row">
+        <label>就業状況</label>
+        <select formControlName="employmentStatus" class="dependent-select">
+          <option value="">選択してください</option>
+          <option value="無職">無職</option>
+          <option value="パート">パート</option>
+          <option value="学生">学生</option>
+          <option value="会社員">会社員</option>
+          <option value="その他">その他</option>
+        </select>
+      </div>
+      <div class="detail-row">
+        <label>扶養開始日</label>
+        <input formControlName="fuyouStartDate" type="date" class="dependent-input" />
+      </div>
+      <div class="detail-row">
+        <label>現在も扶養中</label>
+        <input type="checkbox" formControlName="isCurrentlyDependent" />
+      </div>
+      <div class="detail-row">
+        <label>備考</label>
+        <input formControlName="note" class="dependent-input" placeholder="備考（任意）" />
+      </div>
+      <div style="display:flex; gap:1rem; margin-top:1rem;">
+        <button type="button" (click)="addDependentFromModal()" [disabled]="!dependentForm.valid">追加</button>
+        <button type="button" (click)="closeNewEmployeeDependentModal()" style="background:#b0bec5; color:#fff;">キャンセル</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 詳細用 扶養者追加モーダル -->
+<div class="employee-detail-modal" *ngIf="showDetailDependentModal">
+  <div class="employee-detail-modal-content" style="max-width:600px;">
+    <h2>{{ editingDependentIndex !== null ? '扶養者情報の編集' : '扶養者情報の追加' }}</h2>
+    <form [formGroup]="dependentForm" style="display:flex; flex-direction:column; gap:0.7rem;">
+      <div class="detail-row">
+        <label>氏名</label>
+        <input formControlName="name" placeholder="例：山田 花子" class="dependent-input" />
+      </div>
+      <div class="detail-row">
+        <label>続柄</label>
+        <select formControlName="relationship" class="dependent-select">
+          <option value="">選択してください</option>
+          <option value="配偶者">配偶者</option>
+          <option value="子">子</option>
+          <option value="父母">父母</option>
+          <option value="その他">その他</option>
+        </select>
+      </div>
+      <div class="detail-row">
+        <label>生年月日</label>
+        <input formControlName="birthdate" type="date" class="dependent-input" />
+      </div>
+      <div class="detail-row">
+        <label>性別</label>
+        <select formControlName="gender" class="dependent-select">
+          <option value="">選択してください</option>
+          <option value="男性">男性</option>
+          <option value="女性">女性</option>
+        </select>
+      </div>
+      <div class="detail-row">
+        <label>同居</label>
+        <input type="checkbox" formControlName="cohabitation" />
+      </div>
+      <div class="detail-row">
+        <label>年収</label>
+        <input formControlName="annualIncome" type="number" min="0" class="dependent-input" placeholder="例：1200000" />
+      </div>
+      <div class="detail-row">
+        <label>就業状況</label>
+        <select formControlName="employmentStatus" class="dependent-select">
+          <option value="">選択してください</option>
+          <option value="無職">無職</option>
+          <option value="パート">パート</option>
+          <option value="学生">学生</option>
+          <option value="会社員">会社員</option>
+          <option value="その他">その他</option>
+        </select>
+      </div>
+      <div class="detail-row">
+        <label>扶養開始日</label>
+        <input formControlName="fuyouStartDate" type="date" class="dependent-input" />
+      </div>
+      <div class="detail-row">
+        <label>現在も扶養中</label>
+        <input type="checkbox" formControlName="isCurrentlyDependent" />
+      </div>
+      <div class="detail-row">
+        <label>備考</label>
+        <input formControlName="note" class="dependent-input" placeholder="備考（任意）" />
+      </div>
+      <div style="display:flex; gap:1rem; margin-top:1rem;">
+        <button type="button" (click)="addDependentFromModal()" [disabled]="!dependentForm.valid">追加</button>
+        <button type="button" (click)="closeDetailDependentModal()" style="background:#b0bec5; color:#fff;">キャンセル</button>
+      </div>
+    </form>
   </div>
 </div>

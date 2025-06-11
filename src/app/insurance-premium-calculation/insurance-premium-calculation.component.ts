@@ -66,6 +66,8 @@ interface EmployeePremiumSummary {
   ippanCompany: Decimal;
   tokuteiEmployee: Decimal;
   tokuteiCompany: Decimal;
+  kaigoEmployee: Decimal;
+  kaigoCompany: Decimal;
   kouseiEmployee: Decimal;
   kouseiCompany: Decimal;
   totalEmployee: Decimal;
@@ -518,8 +520,8 @@ export class InsurancePremiumCalculationComponent implements OnInit {
     const prefecturesCol = collection(this.firestore, 'prefectures');
     const snapshot = await getDocs(prefecturesCol);
     const ids = snapshot.docs.map(doc => doc.id);
-    console.log('Firestoreの都道府県ID一覧:', ids);
-    console.log('アプリ側のselectedPrefectureId: [' + this.selectedPrefectureId + ']');
+    // console.log('Firestoreの都道府県ID一覧:', ids);
+    // console.log('アプリ側のselectedPrefectureId: [' + this.selectedPrefectureId + ']');
   }
 
   // 年度と月から実際の年を計算し、ドキュメントIDを返す
@@ -919,6 +921,8 @@ export class InsurancePremiumCalculationComponent implements OnInit {
       let ippanCompany = new Decimal(0);
       let tokuteiEmployee = new Decimal(0);
       let tokuteiCompany = new Decimal(0);
+      let kaigoEmployee = new Decimal(0);
+      let kaigoCompany = new Decimal(0);
       let kouseiEmployee = new Decimal(0);
       let kouseiCompany = new Decimal(0);
 
@@ -951,6 +955,11 @@ export class InsurancePremiumCalculationComponent implements OnInit {
             tokuteiEmployee = tokuteiEmployee.plus(new Decimal(data['premiums']['tokutei']['half'] || 0));
             tokuteiCompany = tokuteiCompany.plus(new Decimal(data['premiums']['tokutei']['full'] || 0).minus(new Decimal(data['premiums']['tokutei']['half'] || 0)));
           }
+          // 介護保険料（kaigo）の計算
+          if (data['premiums']['kaigo'] && data['premiums']['kaigo']['is_applicable'] === true) {
+            kaigoEmployee = kaigoEmployee.plus(new Decimal(data['premiums']['kaigo']['half'] || 0));
+            kaigoCompany = kaigoCompany.plus(new Decimal(data['premiums']['kaigo']['full'] || 0).minus(new Decimal(data['premiums']['kaigo']['half'] || 0)));
+          }
           // 厚生年金保険料（kousei）の計算
           if (data['premiums']['kousei'] && data['premiums']['kousei']['is_applicable'] === true) {
             kouseiEmployee = kouseiEmployee.plus(new Decimal(data['premiums']['kousei']['half'] || 0));
@@ -970,6 +979,8 @@ export class InsurancePremiumCalculationComponent implements OnInit {
         ippanCompany,
         tokuteiEmployee,
         tokuteiCompany,
+        kaigoEmployee,
+        kaigoCompany,
         kouseiEmployee,
         kouseiCompany,
         totalEmployee,
@@ -1058,6 +1069,10 @@ export class InsurancePremiumCalculationComponent implements OnInit {
       health_insurance_company_burden: this.totalCompanyBurden.minus(this.totalKouseiCompanyBurden).toNumber(),
       // 厚生年金保険料（会社負担）
       pension_insurance_company_burden: this.totalKouseiCompanyBurden.toNumber(),
+      // 介護保険料（従業員負担）←追加
+      kaigo_insurance_employee_burden: this.employeePremiumSummaries.reduce((sum, summary) => sum.plus(summary.kaigoEmployee), new Decimal(0)).toNumber(),
+      // 介護保険料（会社負担）←追加
+      kaigo_insurance_company_burden: this.employeePremiumSummaries.reduce((sum, summary) => sum.plus(summary.kaigoCompany), new Decimal(0)).toNumber(),
       // 総合計
       total_burden: this.totalBurden.toNumber()
     };
@@ -1402,7 +1417,7 @@ export class InsurancePremiumCalculationComponent implements OnInit {
         const kouseiBonusRaw = kouseiFlooredBonus.mul(kouseiRate);
         const kouseiBonus = this.applyRounding(kouseiBonusRaw);
         const kouseiHalf = this.applyRounding(kouseiBonus.div(2));
-        console.log(`厚生年金: ${kouseiFlooredBonus.toNumber()} × ${kouseiRate.toString()} = ${kouseiBonus.toNumber()}`);
+        // console.log(`厚生年金: ${kouseiFlooredBonus.toNumber()} × ${kouseiRate.toString()} = ${kouseiBonus.toNumber()}`);
 
         this.bonusCalculationResult = {
             healthInsurance: ippanBonus,
@@ -1420,7 +1435,7 @@ export class InsurancePremiumCalculationComponent implements OnInit {
             kouseiHalf: kouseiHalf,
             bonusAmount: this.bonusAmount // 実際の賞与額を表示
         };
-        console.log('賞与計算結果:', this.bonusCalculationResult);
+        // console.log('賞与計算結果:', this.bonusCalculationResult);
         this.isBonusLoading = false;
     } catch (error) {
         console.error('Error calculating bonus insurance:', error);

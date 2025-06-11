@@ -52,6 +52,15 @@ interface SalarySummary {
   gradePrev3: string | null;
 }
 
+// 定時改定用のインターフェース
+interface RegularRevisionResult {
+  employeeId: string;
+  name: string;
+  averageSalary: number;
+  status: 'success' | 'insufficient';
+  message: string;
+}
+
 @Component({
   selector: 'app-payroll-management',
   standalone: true,
@@ -170,6 +179,16 @@ export class PayrollManagementComponent implements OnInit {
   public isAuthReady$;
   public employeeInfo$;
 
+  showSalaryInfoModal: boolean = false;
+
+  offices: any[] = [];
+  selectedOfficeId: string = '';
+  allEmployees: any[] = []; // 全従業員を保持する配列
+
+  // 定時改定結果を保持する配列
+  regularRevisionResults: RegularRevisionResult[] = [];
+  isRegularRevisionLoading: boolean = false;
+
   constructor(
     private insurancePremiumService: InsurancePremiumService,
     private auth: Auth,
@@ -190,6 +209,10 @@ export class PayrollManagementComponent implements OnInit {
           map(snapshot => {
             if (snapshot.empty) return null;
             const data = snapshot.docs[0].data();
+            this.currentCompanyId = data['company_id'];
+            // 会社IDが取得できたら事業所と従業員を読み込む
+            this.loadOffices();
+            this.loadEmployees();
             return {
               company_id: data['company_id'],
               employee_code: data['employee_code'],
@@ -225,6 +248,7 @@ export class PayrollManagementComponent implements OnInit {
         this.authService.companyId$.subscribe(async companyId => {
           if (companyId) {
             this.currentCompanyId = companyId;
+            await this.loadOffices();
             await this.loadEmployees();
             await this.loadCustomAllowances();
             if (this.activeTab === 'history') {
@@ -236,13 +260,89 @@ export class PayrollManagementComponent implements OnInit {
     });
   }
 
+  async loadOffices() {
+    if (!this.currentCompanyId) {
+      // console.error('会社IDが取得できません');
+      return;
+    }
+
+    try {
+      const officesRef = collection(this.firestore, 'departments');
+      const q = query(officesRef, where('company_id', '==', this.currentCompanyId));
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) {
+        // console.log('事業所が見つかりません');
+        this.offices = [];
+        return;
+      }
+
+      this.offices = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        name: doc.data()['department_name'] || ''
+      }));
+
+      // console.log('読み込んだ事業所:', this.offices);
+    } catch (error) {
+      // console.error('事業所の読み込みに失敗しました:', error);
+      this.offices = [];
+    }
+  }
+
   async loadEmployees() {
-    if (!this.currentCompanyId) return;
-    const employeesCol = collection(this.firestore, 'employees');
-    const q = query(employeesCol, where('company_id', '==', this.currentCompanyId));
-    const empSnapshot = await getDocs(q);
-    this.employees = empSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    this.filteredEmployees = [...this.employees];
+    if (!this.currentCompanyId) {
+      // console.error('会社IDが取得できません');
+      return;
+    }
+
+    try {
+      const employeesRef = collection(this.firestore, 'employees');
+      const q = query(employeesRef, where('company_id', '==', this.currentCompanyId));
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) {
+        // console.log('従業員が見つかりません');
+        this.allEmployees = [];
+        return;
+      }
+
+      this.allEmployees = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      this.filterEmployees();
+    } catch (error) {
+      // console.error('従業員の読み込みに失敗しました:', error);
+      this.allEmployees = [];
+    }
+  }
+
+  onOfficeChange() {
+    this.selectedEmployeeId = ''; // 事業所変更時に従業員選択をリセット
+    this.filterEmployees();
+  }
+
+  filterEmployees() {
+    if (!this.selectedOfficeId) {
+      // 事業所が選択されていない場合は全従業員を表示
+      this.filteredEmployees = this.allEmployees;
+    } else {
+      // 選択された事業所の従業員のみをフィルタリング
+      this.filteredEmployees = this.allEmployees.filter(emp => 
+        emp.department_id === this.selectedOfficeId
+      );
+    }
+
+    // 検索テキストによるフィルタリング
+    if (this.searchText) {
+      const searchLower = this.searchText.toLowerCase();
+      this.filteredEmployees = this.filteredEmployees.filter(emp =>
+        emp.last_name_kanji?.toLowerCase().includes(searchLower) ||
+        emp.first_name_kanji?.toLowerCase().includes(searchLower) ||
+        emp.employee_code?.toLowerCase().includes(searchLower)
+      );
+    }
   }
 
   async onTabChange(tab: string): Promise<void> {
@@ -334,23 +434,6 @@ export class PayrollManagementComponent implements OnInit {
     } catch (error) {
       console.error('Export error:', error);
       this.importError = error instanceof Error ? error.message : 'エクスポート中にエラーが発生しました。';
-    }
-  }
-
-  filterEmployees() {
-    if (!this.searchText) {
-      this.filteredEmployees = [...this.employees];
-    } else {
-      const searchLower = this.searchText.toLowerCase();
-      this.filteredEmployees = this.employees.filter(emp => {
-        const fullName = `${emp.last_name_kanji}${emp.first_name_kanji}`.toLowerCase();
-        const fullNameKana = `${emp.last_name_kana}${emp.first_name_kana}`.toLowerCase();
-        const employeeCode = (emp.employee_code || '').toLowerCase();
-        
-        return fullName.includes(searchLower) || 
-               fullNameKana.includes(searchLower) || 
-               employeeCode.includes(searchLower);
-      });
     }
   }
 
@@ -623,16 +706,44 @@ export class PayrollManagementComponent implements OnInit {
   // 履歴保存
   async saveSalaryHistory(employeeId: string, salaryData: any, operation: 'create' | 'update' | 'delete') {
     if (!this.currentCompanyId) return;
-    // employeeIdからemployee_codeと氏名を取得
-    const empDoc = this.employees.find(e => e.id === employeeId);
-    const employee_code = empDoc?.employee_code || '';
-    const employee_name = empDoc ? `${empDoc.last_name_kanji || ''}${empDoc.first_name_kanji || ''}` : '';
+    // employeeIdからemployee_codeと氏名を取得（allEmployeesも参照）
+    let empDoc = this.employees.find(e => e.id === employeeId) || this.allEmployees.find(e => e.id === employeeId);
+    let employee_code = empDoc?.employee_code || '';
+    let employee_name = empDoc ? `${empDoc.last_name_kanji || ''}${empDoc.first_name_kanji || ''}` : '';
+    // Firestoreから直接取得（念のため）
+    if (!employee_code || !employee_name) {
+      try {
+        const empRef = doc(this.firestore, 'employees', employeeId);
+        const empSnap = await getDoc(empRef);
+        if (empSnap.exists()) {
+          const data = empSnap.data();
+          employee_code = data['employee_code'] || '';
+          employee_name = `${data['last_name_kanji'] || ''}${data['first_name_kanji'] || ''}`;
+        }
+      } catch {}
+    }
     // 操作ユーザー名を取得
     let operatorName = '';
     if (this.auth.currentUser && this.auth.currentUser.email) {
       // ログインユーザーのemailから従業員情報を検索
-      const loginEmp = this.employees.find(e => e.email === this.auth.currentUser!.email);
-      operatorName = loginEmp ? `${loginEmp.last_name_kanji || ''}${loginEmp.first_name_kanji || ''}` : this.auth.currentUser.email;
+      let loginEmp = this.employees.find(e => e.email === this.auth.currentUser!.email) || this.allEmployees.find(e => e.email === this.auth.currentUser!.email);
+      if (!loginEmp) {
+        // Firestoreから直接取得
+        try {
+          const q = query(collection(this.firestore, 'employees'), where('email', '==', this.auth.currentUser.email));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            const data = snap.docs[0].data();
+            operatorName = `${data['last_name_kanji'] || ''}${data['first_name_kanji'] || ''}`;
+          } else {
+            operatorName = this.auth.currentUser.email;
+          }
+        } catch {
+          operatorName = this.auth.currentUser.email;
+        }
+      } else {
+        operatorName = `${loginEmp.last_name_kanji || ''}${loginEmp.first_name_kanji || ''}`;
+      }
     }
     const historiesCol = collection(this.firestore, 'companies', this.currentCompanyId, 'salary_histories');
     await addDoc(historiesCol, {
@@ -1370,9 +1481,151 @@ export class PayrollManagementComponent implements OnInit {
     const zenkokuDocRef = doc(this.firestore, 'prefectures', '全国');
     const zenkokuDoc = await getDoc(zenkokuDocRef);
     if (zenkokuDoc.exists()) {
-      console.log('全国ドキュメントの内容:', zenkokuDoc.id, zenkokuDoc.data());
+      // console.log('全国ドキュメントの内容:', zenkokuDoc.id, zenkokuDoc.data());
     } else {
-      console.log('全国ドキュメントは存在しません');
+      // console.log('全国ドキュメントは存在しません');
     }
+  }
+
+  showSalaryInfo() {
+    this.showSalaryInfoModal = true;
+  }
+
+  closeSalaryInfo() {
+    this.showSalaryInfoModal = false;
+  }
+
+  // 定時改定ボタンのクリック時
+  async onRegularRevision() {
+    if (!this.selectedOfficeId) {
+      alert('事業所を選択してください。');
+      return;
+    }
+
+    if (!this.currentCompanyId) {
+      alert('会社情報が取得できません。再度ログインしてください。');
+      return;
+    }
+
+    this.isRegularRevisionLoading = true;
+    this.regularRevisionResults = [];
+    
+    try {
+      const currentYear = new Date().getFullYear();
+      const targetMonths = [
+        `${currentYear}-04`,
+        `${currentYear}-05`,
+        `${currentYear}-06`
+      ];
+
+      // 選択された事業所の従業員情報を取得
+      const employeesCol = collection(this.firestore, 'employees');
+      const q = query(
+        employeesCol,
+        where('company_id', '==', this.currentCompanyId),
+        where('department_id', '==', this.selectedOfficeId)
+      );
+      
+      console.log('クエリ条件:', {
+        company_id: this.currentCompanyId,
+        department_id: this.selectedOfficeId
+      });
+
+      const employeesSnapshot = await getDocs(q);
+      
+      if (employeesSnapshot.empty) {
+        alert('選択された事業所に従業員が存在しません。');
+        this.isRegularRevisionLoading = false;
+        return;
+      }
+
+      console.log('取得した従業員数:', employeesSnapshot.size);
+
+      for (const employeeDoc of employeesSnapshot.docs) {
+        const employee = employeeDoc.data();
+        console.log('従業員情報:', employee);
+        
+        const salariesCol = collection(employeeDoc.ref, 'salaries');
+        const salariesSnapshot = await getDocs(salariesCol);
+        
+        // 対象月の給与情報を収集
+        const monthlySalaries: { [key: string]: number } = {};
+        salariesSnapshot.forEach(doc => {
+          const salary = doc.data();
+          if (targetMonths.includes(salary['year_month'])) {
+            monthlySalaries[salary['year_month']] = salary['total_amount'];
+          }
+        });
+
+        // 給与情報の充足チェック
+        const hasAllMonths = targetMonths.every(month => monthlySalaries[month] !== undefined);
+        
+        if (hasAllMonths) {
+          // 3ヶ月の平均を計算
+          const total = targetMonths.reduce((sum, month) => sum + monthlySalaries[month], 0);
+          const average = Math.floor(total / 3);
+
+          this.regularRevisionResults.push({
+            employeeId: employee['employee_code'],
+            name: `${employee['last_name_kanji']} ${employee['first_name_kanji']}`,
+            averageSalary: average,
+            status: 'success',
+            message: '成功'
+          });
+        } else {
+          this.regularRevisionResults.push({
+            employeeId: employee['employee_code'],
+            name: `${employee['last_name_kanji']} ${employee['first_name_kanji']}`,
+            averageSalary: 0,
+            status: 'insufficient',
+            message: '給与が不足しています'
+          });
+        }
+      }
+
+      // 結果が0件の場合のメッセージ
+      if (this.regularRevisionResults.length === 0) {
+        alert('該当する従業員の給与情報が見つかりませんでした。');
+      }
+
+    } catch (error) {
+      console.error('定時改定処理でエラーが発生しました:', error);
+      alert('定時改定処理中にエラーが発生しました。');
+    } finally {
+      this.isRegularRevisionLoading = false;
+    }
+  }
+
+  // 定時改定結果のエクスポート
+  exportRegularRevisionResults() {
+    if (this.regularRevisionResults.length === 0) {
+      alert('エクスポートするデータがありません。');
+      return;
+    }
+
+    // CSVデータの作成
+    const headers = ['社員ID', '氏名', '3ヶ月平均給与'];
+    const csvData = this.regularRevisionResults.map(result => [
+      result.employeeId,
+      result.name,
+      result.averageSalary
+    ]);
+
+    // CSVファイルの作成
+    const csvContent = [
+      headers.join(','),
+      ...csvData.map(row => row.join(','))
+    ].join('\n');
+
+    // ファイル名の作成（現在の日時を含める）
+    const now = new Date();
+    const fileName = `定時改定結果_${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}.csv`;
+
+    // ダウンロード処理
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = fileName;
+    link.click();
   }
 }

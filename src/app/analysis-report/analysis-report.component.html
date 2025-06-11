@@ -77,7 +77,7 @@
           </thead>
           <tbody>
             <tr>
-              <td style="padding: 1rem; border-bottom: 1px solid #e0e0e0;">健康保険料</td>
+              <td style="padding: 1rem; border-bottom: 1px solid #e0e0e0;">健康保険料（介護保険込み）</td>
               <td style="padding: 1rem; text-align: right; border-bottom: 1px solid #e0e0e0;">¥{{ ippanCompanyTotal | number }}</td>
               <td style="padding: 1rem; text-align: right; border-bottom: 1px solid #e0e0e0;">¥{{ ippanEmployeeTotal | number }}</td>
               <td style="padding: 1rem; text-align: right; border-bottom: 1px solid #e0e0e0;">¥{{ ippanCompanyTotal + ippanEmployeeTotal | number }}</td>
@@ -124,7 +124,7 @@
       <canvas id="lineChart2" width="600" height="250"></canvas>
     </div>
     <div class="graph-section">
-      <h3>月額変更・賞与支給の推移</h3>
+      <h3>賞与支給の推移</h3>
       <canvas id="lineChart3" width="600" height="250"></canvas>
     </div>
   </div>
@@ -140,18 +140,6 @@
     <div class="graph-section">
       <h3>拠点別保険料総額比較</h3>
       <canvas id="barChart1" width="600" height="250"></canvas>
-    </div>
-    <div class="graph-section">
-      <h3>保険料負担割合（会社・従業員）</h3>
-      <div *ngFor="let label of branchPieLabels; let i = index" style="margin-bottom: 2rem;">
-        <div style="font-weight: bold; color: #1976d2; margin-bottom: 0.5em;">{{ label }}</div>
-        <ng-container *ngIf="branchCompanyBurden[i] + branchEmployeeBurden[i] > 0; else noData">
-          <canvas [id]="'pieChart' + i" width="400" height="250"></canvas>
-        </ng-container>
-        <ng-template #noData>
-          <div style="color: #d32f2f; font-size: 1.1em;">データがないため作成できません</div>
-        </ng-template>
-      </div>
     </div>
     <div class="graph-section">
       <h3>従業員ステータス別人数</h3>

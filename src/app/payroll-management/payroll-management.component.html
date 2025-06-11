@@ -23,7 +23,7 @@
   <h1>給与情報管理</h1>
   <div class="tab-header">
     <button [class.active]="activeTab === 'salary'" (click)="onTabChange('salary')">💼 月額給与・手当・賞与管理</button>
-    <button [class.active]="activeTab === 'auto-judge'" (click)="onTabChange('auto-judge')">🔄 報酬月額変更自動判定</button>
+    <button [class.active]="activeTab === 'auto-judge'" (click)="onTabChange('auto-judge')">📊 標準報酬月額管理</button>
     <button [class.active]="activeTab === 'history'" (click)="onTabChange('history')">📜 給与情報履歴管理</button>
     <button [class.active]="activeTab === 'csv'" (click)="onTabChange('csv')">📥 CSVファイルインポート/エクスポート</button>
   </div>
@@ -32,7 +32,16 @@
   <div *ngIf="activeTab === 'salary'" class="tab-content">
     <h2>月額給与・手当・賞与管理</h2>
     <div class="salary-form">
-      <h3>給与明細登録</h3>
+      <h3>給与明細登録 <button type="button" class="info-button" (click)="showSalaryInfo()"><mat-icon>info</mat-icon></button></h3>
+      <div class="form-group">
+        <label for="officeSelect">事業所</label>
+        <select id="officeSelect" [(ngModel)]="selectedOfficeId" name="officeSelect" (change)="onOfficeChange()" required>
+          <option value="">選択してください</option>
+          <option *ngFor="let office of offices" [value]="office.id">
+            {{office.name}}
+          </option>
+        </select>
+      </div>
       <div class="form-group">
         <label for="employeeSearch">従業員検索（氏名・ID）</label>
         <input type="text" id="employeeSearch" placeholder="氏名・IDで検索" [(ngModel)]="searchText" (ngModelChange)="filterEmployees()" name="employeeSearch" />
@@ -124,13 +133,68 @@
 
   <!-- 報酬月額変更自動判定 -->
   <div *ngIf="activeTab === 'auto-judge'" class="tab-content">
-    <h2>報酬月額変更自動判定</h2>
+    <h2>標準報酬月額管理</h2>
+    <!-- 注意事項表示 -->
+    <div class="alert" style="margin-bottom:1.5em; background:#fffbe7; color:#7c6f00; border:1.5px solid #ffe082;">
+      <b>標準報酬月額の定時決定（定時改定とも呼ばれる）は、社会保険料の計算に使われる標準報酬月額を毎年1回見直す制度です。<br>
+      4月・5月・6月の3カ月間の給与を基に標準報酬月額を決定し、9月から翌年8月まで適用されます。</b>
+    </div>
     <div class="section">
-      
+      <!-- 事業所選択 -->
+      <div class="form-group" style="margin-bottom:1.5em;">
+        <label for="revisionOfficeSelect">事業所</label>
+        <select id="revisionOfficeSelect" [(ngModel)]="selectedOfficeId" name="revisionOfficeSelect" required>
+          <option value="">選択してください</option>
+          <option *ngFor="let office of offices" [value]="office.id">
+            {{office.name}}
+          </option>
+        </select>
+      </div>
+
+      <!-- 定時改定ボタン追加 -->
+      <button (click)="onRegularRevision()" class="regular-revision-btn" style="margin-bottom:1.5em;" [disabled]="!selectedOfficeId">
+        標準報酬月額 定時改定
+      </button>
+
+      <!-- 定時改定結果表示 -->
+      <div *ngIf="isRegularRevisionLoading" style="margin:1em 0; color:#888;">
+        定時改定処理中...
+      </div>
+      <div *ngIf="regularRevisionResults.length > 0" class="table-container" style="margin-top:1.5em;">
+        <!-- エクスポートボタン -->
+        <div style="margin-bottom:1em; text-align:right;">
+          <button (click)="exportRegularRevisionResults()" class="csv-export-btn">
+            <mat-icon>file_download</mat-icon>
+            定時改定結果をエクスポート
+          </button>
+        </div>
+        <table class="payroll-table" style="min-width: 700px;">
+          <thead>
+            <tr>
+              <th>社員ID</th>
+              <th>氏名</th>
+              <th>3ヶ月平均給与</th>
+              <th>判定結果</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let result of regularRevisionResults">
+              <td>{{ result.employeeId }}</td>
+              <td>{{ result.name }}</td>
+              <td>{{ result.averageSalary | number:'1.0-0' }}円</td>
+              <td [ngClass]="{
+                'text-success': result.status === 'success',
+                'text-danger': result.status === 'insufficient'
+              }">{{ result.message }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
       <!-- 全従業員判定一覧 -->
       <div style="margin-top:2.5em;">
         <button (click)="loadSalarySummaries()" [disabled]="isSummaryLoading">
-          全従業員判定一覧を表示（ここをクリック）
+          等級変動チェック（全従業員）※ここをクリック
         </button>
         <div *ngIf="isSummaryLoading" style="margin:1em 0; color:#888;">集計中...</div>
         <div class="table-container" *ngIf="salarySummaries.length > 0">
@@ -316,6 +380,25 @@
       <div class="form-actions">
         <button type="button" (click)="openCustomAllowanceModal()">新規追加</button>
         <button type="button" (click)="closeCustomAllowanceListModal()">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 給与明細情報モーダル -->
+  <div class="modal" *ngIf="showSalaryInfoModal">
+    <div class="modal-content">
+      <h3>給与明細登録の注意事項</h3>
+      <div class="info-content">
+        <p>給与明細を登録する際の注意事項：</p>
+        <ul>
+          <li>社会保険上の取り扱いとして賞与は4回以上は認められていません。注意してください。</li>
+          <li>新しい手当項目を増やしたい場合は、手当区分管理から追加してください。</li>
+          <li>賞与は区分から賞与を選び登録してください</li>
+          <li>総支給額は自動計算されます</li>
+        </ul>
+      </div>
+      <div class="form-actions">
+        <button type="button" (click)="closeSalaryInfo()">閉じる</button>
       </div>
     </div>
   </div>
