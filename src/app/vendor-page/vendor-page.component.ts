@@ -3,7 +3,7 @@ import { FormBuilder, FormGroup, Validators, ReactiveFormsModule, AbstractContro
 import { Firestore, doc, setDoc, collection, getDocs, query, where, deleteDoc, getDoc, serverTimestamp } from '@angular/fire/firestore';
 import { CommonModule } from '@angular/common';
 import { debounceTime } from 'rxjs/operators';
-import { createUserWithEmailAndPassword, Auth } from '@angular/fire/auth';
+import { createUserWithEmailAndPassword, Auth, getAuth, sendPasswordResetEmail } from '@angular/fire/auth';
 import { HttpClient } from '@angular/common/http';
 import * as XLSX from 'xlsx';
 import { InsurancePremiumService } from '../shared/services/insurance-premium.service';
@@ -281,6 +281,7 @@ export class VendorPageComponent implements OnInit {
         employment_end_date: '',
         leave_start_date: '',
         leave_end_date: '',
+        expected_delivery_date: '',
         status: '在籍中',
         department: '',
         work_category: '',
@@ -313,6 +314,8 @@ export class VendorPageComponent implements OnInit {
       // Firebase Authにもサインアップ
       try {
         await createUserWithEmailAndPassword(this.auth, employeeData.email, initialPassword);
+        // パスワードの再設定メールを送信
+        await sendPasswordResetEmail(this.auth, employeeData.email);
       } catch (e: any) {
         // すでに登録済みの場合などは無視（他のエラーは通知）
         if (e.code !== 'auth/email-already-in-use') {

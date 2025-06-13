@@ -290,26 +290,26 @@ export class AnalysisReportComponent {
       const status = (doc.data()['status'] || '').trim();
       switch (status) {
         case '在籍中':
-          active++;
+        active++;
           break;
         case '休職中':
-          leave++;
+        leave++;
           break;
         case '産休中':
-          maternity++;
+        maternity++;
           break;
         case '産休中（多胎妊娠）':
           maternityMultiple++;
           break;
         case '育休中':
-          childcare++;
+        childcare++;
           break;
         case '退職予定':
-          retiring++;
+        retiring++;
           break;
         case '退職':
         case '退職済み':
-          retired++;
+        retired++;
           break;
         case '海外赴任中':
           overseas++;

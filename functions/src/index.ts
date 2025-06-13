@@ -133,3 +133,66 @@ export const sendInquiryNotification = functions.firestore
     }
   });
 
+interface SignUpData {
+  email: string;
+  password: string;
+  employeeData: {
+    company_id: string;
+    employee_code: string;
+    email: string;
+    [key: string]: unknown;
+  };
+}
+
+export const signUpEmployee = functions.https.onCall(
+  async (data: SignUpData, _context: functions.https.CallableContext) => {
+    // 管理者権限チェック
+    if (!_context.auth) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "認証が必要です"
+      );
+    }
+
+    const {email, password, employeeData} = data;
+
+    try {
+      // Firebase Authでユーザーを作成
+      const userRecord = await admin.auth().createUser({
+        email,
+        password,
+      });
+
+      // 既存の従業員データを検索
+      const employeesCol = admin.firestore().collection("employees");
+      const q = employeesCol
+        .where("employee_code", "==", employeeData.employee_code)
+        .where("company_id", "==", employeeData.company_id);
+      const snapshot = await q.get();
+
+      if (snapshot.empty) {
+        throw new functions.https.HttpsError(
+          "not-found",
+          "従業員データが見つかりません"
+        );
+      }
+
+      // 既存のデータを更新
+      const docRef = snapshot.docs[0].ref;
+      await docRef.update({
+        ...employeeData,
+        uid: userRecord.uid,
+        updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return {success: true, uid: userRecord.uid};
+    } catch (error) {
+      console.error("Error in signUpEmployee:", error);
+      throw new functions.https.HttpsError(
+        "internal",
+        error instanceof Error ? error.message : "不明なエラーが発生しました"
+      );
+    }
+  }
+);
+

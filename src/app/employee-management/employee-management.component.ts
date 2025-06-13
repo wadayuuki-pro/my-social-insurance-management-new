@@ -13,6 +13,7 @@ import * as XLSX from 'xlsx';
 import { Storage } from '@angular/fire/storage';
 import { Router } from '@angular/router';
 import { Timestamp } from '@angular/fire/firestore';
+import { Functions, httpsCallable } from '@angular/fire/functions';
 
 interface Employee {
   id: string;
@@ -331,7 +332,7 @@ if (
   (emp.pensionInsuranceRequiredActions && emp.pensionInsuranceRequiredActions.includes(secondmentMsg))
 ) {
   return secondmentMsg;
-}
+    }
 
     // --- ここから「届け出を作成してください。」の重複排除 ---
     const todokeMsg = '届け出を作成してください。';
@@ -407,7 +408,8 @@ if (
     private authService: AuthService,
     private http: HttpClient,
     private storage: Storage,
-    private router: Router
+    private router: Router,
+    private functions: Functions
   ) {
     this.searchForm = this.fb.group({
       employee_id: ['']
@@ -476,7 +478,8 @@ if (
       health_insurance_withdrawal_date: [''],
       pension_insurance_withdrawal_date: [''],
       created_at: [new Date()],
-      updated_at: [new Date()]
+      updated_at: [new Date()],
+      expected_delivery_date: [''],  // 出産予定日フィールドを追加
     });
     // 扶養者追加用フォーム初期化
     this.dependentForm = this.fb.group({
@@ -626,6 +629,12 @@ if (
     const q = query(employeesCol, where('company_id', '==', this.companyId));
     const snapshot = await getDocs(q);
     this.employees = snapshot.docs.map(doc => doc.data());
+    // 社員番号順にソート
+    this.employees.sort((a, b) => {
+      if (!a.employee_code) return 1;
+      if (!b.employee_code) return -1;
+      return a.employee_code.localeCompare(b.employee_code);
+    });
     this.filteredEmployees = [...this.employees];
     // departmentフィールドのユニーク値を抽出
     const deptSet = new Set<string>();
@@ -1133,7 +1142,9 @@ if (
 
     // 扶養者情報を除外した基本情報のカラム
     const baseFields = this.employeeFieldOrder.filter(f => 
-      !['company_id', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at'].includes(f)
+      !['company_id', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at',
+        'employment_type', 'status', 'health_insurance_enrolled', 'pension_insurance_enrolled',
+        'has_dependents', 'is_dependent', 'remarks'].includes(f)
     );
 
     // ヘッダー行の作成
@@ -1145,9 +1156,6 @@ if (
     for (const emp of this.filteredEmployees) {
       const baseData = baseFields.map(f => {
         let val = emp[f];
-        if (f === 'has_dependents') return val ? '有' : '無';
-        if (f === 'health_insurance_enrolled' || f === 'pension_insurance_enrolled') return val ? '加入' : '未加入';
-        if (f === 'is_dependent') return val ? 'はい' : 'いいえ';
         if (val === undefined || val === null) return '';
         return val;
       });
@@ -1174,7 +1182,9 @@ if (
   exportEmployeeCSV(employee: any) {
     // 扶養者情報を除外した基本情報のカラム
     const baseFields = this.employeeFieldOrder.filter(f => 
-      !['company_id', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at'].includes(f)
+      !['company_id', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at',
+        'employment_type', 'status', 'health_insurance_enrolled', 'pension_insurance_enrolled',
+        'has_dependents', 'is_dependent', 'remarks'].includes(f)
     );
 
     // ヘッダー行の作成
@@ -1183,9 +1193,6 @@ if (
     // データ行の作成
     const baseData = baseFields.map(f => {
       let val = employee[f];
-      if (f === 'has_dependents') return val ? '有' : '無';
-      if (f === 'health_insurance_enrolled' || f === 'pension_insurance_enrolled') return val ? '加入' : '未加入';
-      if (f === 'is_dependent') return val ? 'はい' : 'いいえ';
       if (val === undefined || val === null) return '';
       return val;
     });
@@ -1262,8 +1269,8 @@ if (
 
   // ランダムなパスワードを生成する関数
   private generateRandomPassword(employeeCode?: string): string {
-    // 社員ID＋00 形式
-    return (employeeCode || '') + '00';
+    // 社員IDと同じ値を返す
+    return employeeCode || '';
   }
 
   async saveNewEmployee() {
@@ -1342,7 +1349,8 @@ if (
         dependents: this.newEmployeeDependentsArray.value,
         created_at: new Date(),
         updated_at: new Date(),
-        status: formValue.status || '在籍中'
+        status: formValue.status || '在籍中',
+        expected_delivery_date: formValue.expected_delivery_date || '',  // 出産予定日フィールドを追加
       };
       this.newEmployeeForm.get('company_id')?.disable();
       this.newEmployeeForm.get('employee_code')?.disable();
@@ -1358,27 +1366,24 @@ if (
 
   // 個別サインアップ処理
   async signUpEmployee(employee: any) {
-    if (!employee.email || !employee.password) {
-      alert('メールアドレスまたはパスワードがありません');
-      return;
-    }
     try {
-      const userCredential = await createUserWithEmailAndPassword(this.auth, employee.email, employee.password);
-      // サインアップ成功時にuidをFirestoreに保存
-      const employeesCol = collection(this.firestore, 'employees');
-      const q = query(employeesCol, where('employee_code', '==', employee.employee_code), where('company_id', '==', employee.company_id));
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        const ref = doc(this.firestore, 'employees', snapshot.docs[0].id);
-        await updateDoc(ref, { uid: userCredential.user.uid });
-      }
-      // パスワードリセットメールを送信
-      const auth = getAuth();
-      await sendPasswordResetEmail(auth, employee.email);
-      alert('サインアップが完了しました。パスワード設定用メールを送信しました。');
+      const randomPassword = this.generateRandomPassword(employee.employee_code);
+      const signUpEmployeeFn = httpsCallable(this.functions, 'signUpEmployee');
+      
+      await signUpEmployeeFn({
+        email: employee.email,
+        password: randomPassword,
+        employeeData: {
+          ...employee,
+          password: randomPassword
+        }
+      });
+
+      alert('サインアップが完了しました。');
       await this.loadEmployees();
     } catch (error: any) {
-      alert('サインアップに失敗しました: ' + (error.message || error));
+      console.error('Error signing up employee:', error);
+      alert('サインアップに失敗しました: ' + error.message);
     }
   }
 
@@ -1830,7 +1835,9 @@ if (
       });
     }
     // 期待カラム名
-    const excludeFields = ['company_id', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at'];
+    const excludeFields = ['company_id', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at',
+      'employment_type', 'status', 'health_insurance_enrolled', 'pension_insurance_enrolled',
+      'has_dependents', 'is_dependent', 'remarks'];
     const expectedHeaders = this.employeeFieldOrder
       .filter(f => !excludeFields.includes(f))
       .map(f => this.employeeFieldLabels[f] || f);
@@ -1839,23 +1846,23 @@ if (
     const headers = headerLine.replace(/^\uFEFF/, '').split(',').map((h: string) => h.replace(/"/g, '').trim());
 
     const employeeCodeSet = new Set<string>();
-const duplicateCodes: string[] = [];
-for (let i = 1; i < lines.length; i++) {
-  const row = lines[i].split(',').map((v: string) => v.replace(/"/g, '').trim());
-  if (row.length !== expectedHeaders.length) continue;
-  const employee_code = row[1];
-  if (!employee_code) continue;
-  if (employeeCodeSet.has(employee_code)) {
-    duplicateCodes.push(employee_code);
-  } else {
-    employeeCodeSet.add(employee_code);
-  }
-}
+    const duplicateCodes: string[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const row = lines[i].split(',').map((v: string) => v.replace(/"/g, '').trim());
+      if (row.length !== expectedHeaders.length) continue;
+      const employee_code = row[1];
+      if (!employee_code) continue;
+      if (employeeCodeSet.has(employee_code)) {
+        duplicateCodes.push(employee_code);
+      } else {
+        employeeCodeSet.add(employee_code);
+      }
+    }
 
-if (duplicateCodes.length > 0) {
-  alert(`インポートできません：同じ社員IDがファイル内に複数存在します。\n重複している社員ID: ${[...new Set(duplicateCodes)].join(', ')}`);
-  return;
-}
+    if (duplicateCodes.length > 0) {
+      alert(`インポートできません：同じ社員IDがファイル内に複数存在します。\n重複している社員ID: ${[...new Set(duplicateCodes)].join(', ')}`);
+      return;
+    }
 
     if (headers.length !== expectedHeaders.length || !headers.every((h: string, i: number) => h === expectedHeaders[i])) {
       alert('インポートできません：列名や順番が正しくありません。');
@@ -1895,22 +1902,14 @@ if (duplicateCodes.length > 0) {
 
         // employeeFieldOrderのうち、インポート対象のフィールドのみを使ってemployeeDataを作成
         const importFields = this.employeeFieldOrder.filter(f =>
-          !['company_id', 'my_number', 'role', 'password', 'dependents', 'created_at', 'updated_at'].includes(f)
+          !excludeFields.includes(f)
         );
         const employeeData: any = {
           company_id: this.companyId,
           updated_at: new Date()
         };
         importFields.forEach((f, idx) => {
-          if (f === 'has_dependents') {
-            employeeData[f] = row[idx] === '有';
-          } else if (f === 'health_insurance_enrolled' || f === 'pension_insurance_enrolled') {
-            employeeData[f] = row[idx] === '加入';
-          } else if (f === 'is_dependent') {
-            employeeData[f] = row[idx] === 'はい';
-          } else {
-            employeeData[f] = row[idx];
-          }
+          employeeData[f] = row[idx];
         });
         // 旧ロジックのpension_number, health_insurance_numberの指数表記変換も反映
         let pension_number = row[22];
@@ -2397,19 +2396,19 @@ if (duplicateCodes.length > 0) {
     }
 
     const targetDate = this.getJudgementTargetDate();
-    const leaveStartDate = employee.leave_start_date ? new Date(employee.leave_start_date) : null;
+    const expectedDeliveryDate = employee.expected_delivery_date ? new Date(employee.expected_delivery_date) : null;
     
-    if (!leaveStartDate) {
+    if (!expectedDeliveryDate) {
       return false;
     }
 
-    // 出産予定日の日付を計算
-    const startDate = new Date(leaveStartDate);
+    // 産前産後休業期間の計算
+    const startDate = new Date(expectedDeliveryDate);
     // 多胎妊娠の場合は98日前、それ以外は42日前
     const daysToSubtract = employee.status === '産休中（多胎妊娠）' ? 98 : 42;
     startDate.setDate(startDate.getDate() - daysToSubtract);
     
-    const endDate = new Date(leaveStartDate);
+    const endDate = new Date(expectedDeliveryDate);
     endDate.setDate(endDate.getDate() + 56);
 
     // 判定対象月の末日を取得
@@ -2480,7 +2479,6 @@ if (duplicateCodes.length > 0) {
       };
     }
 
-
     // 退職者は適用外
     if (this.isRetiredEmployee(employee)) {
       return {
@@ -2515,11 +2513,6 @@ if (duplicateCodes.length > 0) {
       reason: '',
       requiredActions: []
     };
-
-    if (!employee.employment_type) {
-      result.isEligible = true;
-      return result;
-    }
 
     // 75歳以上は適用外 → 誕生月から適用外に修正
     if (employee.date_of_birth) {
@@ -2577,6 +2570,9 @@ if (duplicateCodes.length > 0) {
           return result;
         }
       }
+    } else {
+      // 雇用形態が未設定の場合は、他の条件で判定
+      result.isEligible = true;
     }
 
     // 適用内の場合のみ、免除判定を行う
@@ -2611,7 +2607,6 @@ if (duplicateCodes.length > 0) {
     }
     return result;
   }
-
 
   // 介護保険の適用判定
   checkNursingInsuranceEligibility(employee: any): InsuranceEligibility {
@@ -2777,11 +2772,6 @@ if (duplicateCodes.length > 0) {
       reason: '',
       requiredActions: []
     };
-    
-    if (!employee.employment_type) {
-      result.isEligible = true;
-      return result;
-    }
 
     // 70歳以上は適用外 → 誕生月から適用外に修正
     if (employee.date_of_birth) {
@@ -2790,11 +2780,24 @@ if (duplicateCodes.length > 0) {
       seventiethBirthday.setFullYear(birthDate.getFullYear() + 70);
       // 判定対象年月の月初
       const targetMonthStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
-      // 70歳の誕生月の月初以降は適用外
-      if (targetMonthStart >= new Date(seventiethBirthday.getFullYear(), seventiethBirthday.getMonth(), 1)) {
-        result.reason = '70歳の誕生月から厚生年金適用外';
-        result.status = 'out';
-        return result;
+      
+      // 誕生日が1日の場合の特別処理
+      if (birthDate.getDate() === 1) {
+        // 70歳の誕生月の前月の月初以降は適用外
+        const endMonth = new Date(seventiethBirthday);
+        endMonth.setMonth(endMonth.getMonth() - 1);
+        if (targetMonthStart >= new Date(endMonth.getFullYear(), endMonth.getMonth(), 1)) {
+          result.reason = '70歳の誕生月の前月から厚生年金適用外（1日生まれ）';
+          result.status = 'out';
+          return result;
+        }
+      } else {
+        // 通常のケース：70歳の誕生月の月初以降は適用外
+        if (targetMonthStart >= new Date(seventiethBirthday.getFullYear(), seventiethBirthday.getMonth(), 1)) {
+          result.reason = '70歳の誕生月から厚生年金適用外';
+          result.status = 'out';
+          return result;
+        }
       }
     }
 
@@ -2850,6 +2853,9 @@ if (duplicateCodes.length > 0) {
           return result;
         }
       }
+    } else {
+      // 雇用形態が未設定の場合は、他の条件で判定
+      result.isEligible = true;
     }
 
     // 適用内の場合のみ、免除判定を行う

@@ -165,15 +165,24 @@ export class ApplicationApprovalComponent implements OnInit {
 
   // 決済ルートの読み込み
   async loadApprovalRoutes() {
-    if (!this.companyId) return;
+    if (!this.companyId) {
+      console.error('会社IDが設定されていません');
+      return;
+    }
+    console.log('現在の会社ID:', this.companyId);
     const routesRef = collection(this.firestore, 'approval_routes');
     const q = query(routesRef, where('companyId', '==', this.companyId));
     const querySnapshot = await getDocs(q);
 
-    this.approvalRoutes = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as ApprovalRoute));
+    this.approvalRoutes = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      console.log('取得した決済ルート:', data);
+      return {
+        id: doc.id,
+        ...data
+      } as ApprovalRoute;
+    });
+    console.log('読み込んだ決済ルート数:', this.approvalRoutes.length);
   }
 
   async loadEmployeeList() {

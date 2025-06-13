@@ -7,6 +7,7 @@ import { AuthService } from '../shared/services/auth.service';
 import { switchMap, map } from 'rxjs/operators';
 import { of, from } from 'rxjs';
 import { ActivatedRoute, Router } from '@angular/router';
+import { getAuth, sendPasswordResetEmail } from 'firebase/auth';
 
 @Component({
   selector: 'app-dashboard',
@@ -42,6 +43,22 @@ export class DashboardComponent implements OnInit {
       this.router.navigate(['/login']);
     } catch (error) {
       // console.error('ログアウト中にエラーが発生しました:', error);
+    }
+  }
+
+  async changePassword() {
+    const auth = getAuth();
+    try {
+      const user = auth.currentUser;
+      if (!user?.email) {
+        alert('ログイン情報が取得できません。');
+        return;
+      }
+      await sendPasswordResetEmail(auth, user.email);
+      alert('パスワード再設定メールを送信しました。メールをご確認ください。');
+    } catch (error) {
+      alert('パスワード再設定メールの送信に失敗しました。');
+      console.error(error);
     }
   }
 

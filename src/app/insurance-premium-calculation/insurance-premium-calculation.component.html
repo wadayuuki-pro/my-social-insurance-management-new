@@ -30,6 +30,11 @@
   <div class="tab-content">
     <ng-container *ngIf="selectedTab === 'calculation'">
       <h2>保険料計算</h2>
+      <!-- 注意書きを追加 -->
+      <div style="margin-bottom: 1rem; background: #fff3e0; color: #e65100; border: 1px solid #ffe0b2; border-radius: 6px; padding: 0.5rem 0.8rem; display: flex; align-items: center; gap: 0.5rem; box-shadow: 0 1px 4px rgba(230,81,0,0.08); font-size: 0.95rem;">
+        <mat-icon style="color: #e65100; font-size: 1.2rem; height: 1.2rem; width: 1.2rem;">warning</mat-icon>
+        <span style="font-weight: 500;">計算実行後は必ず保存ボタンを押してください</span>
+      </div>
       <div class="section">
         <div class="form-group">
           <label for="department">事業所（部署）<span style="color: #d32f2f;">*</span></label>
@@ -53,17 +58,6 @@
           </select>
         </div>
 
-        
-
-        <!-- 選択中の都道府県ID表示 -->
-        <div class="form-group">
-          <ng-container *ngIf="selectedPrefectureId; else noDept">
-            <span style="color:#1976d2; font-weight:500;">選択中の都道府県ID：{{ selectedPrefectureId }}</span>
-          </ng-container>
-          <ng-template #noDept>
-            <span style="color:#d32f2f; font-weight:500;">事業所（部署）が設定されていません</span>
-          </ng-template>
-        </div>
 
         <div class="form-group">
           <label for="yearSelect">対象年度</label>
@@ -110,8 +104,8 @@
           </button>
           <button type="button" (click)="toggleRoundingPattern()" class="rounding-btn">
             <mat-icon>swap_horiz</mat-icon>
-            <span *ngIf="roundingPattern === 'round'">四捨五入:給与から控除</span>
-            <span *ngIf="roundingPattern === 'custom'">四捨五入:現金払い</span>
+            <span *ngIf="roundingPattern === 'round'">四捨五入:現金払い</span>
+            <span *ngIf="roundingPattern === 'custom'">四捨五入:給与から控除</span>
           </button>
           <button type="button" (click)="saveCalculationResult()" *ngIf="calculationResultTotalNumber > 0 && !isBonusCalculation" class="save-btn">
             <mat-icon>save</mat-icon>
@@ -186,24 +180,6 @@
                       {{ getDisplayValue(calculationResult.tokuteiHalf) | number:'1.0-0' }}円
                     </ng-container>
                     <ng-template #notApplicableTokutei2>-</ng-template>
-                  </td>
-                </tr>
-                <tr>
-                  <td>介護保険料（全額）</td>
-                  <td>
-                    <ng-container *ngIf="_lastInsuranceApplicable.tokutei; else notApplicableKaigo1">
-                      {{ getDisplayValue(calculationResult.kaigoFull) | number }}円
-                    </ng-container>
-                    <ng-template #notApplicableKaigo1>-</ng-template>
-                  </td>
-                </tr>
-                <tr>
-                  <td>介護保険料（半額）</td>
-                  <td>
-                    <ng-container *ngIf="_lastInsuranceApplicable.tokutei; else notApplicableKaigo2">
-                      {{ getDisplayValue(calculationResult.kaigoHalf) | number:'1.0-0' }}円
-                    </ng-container>
-                    <ng-template #notApplicableKaigo2>-</ng-template>
                   </td>
                 </tr>
                 <tr>
@@ -359,9 +335,9 @@
       <h2>保険料負担内訳</h2>
       <div class="section burden-ratio-section">
         <div class="form-group">
-          <label for="department-ratio">事業所（部署）</label>
+          <label for="department-ratio">事業所</label>
           <select id="department-ratio" [(ngModel)]="selectedDepartmentId" name="department-ratio" (change)="onDepartmentChange()">
-            <option value="">全ての事業所</option>
+            <option value="">事業所を選択してください</option>
             <option *ngFor="let dept of departments" [value]="dept.id">{{ dept.name }}</option>
           </select>
         </div>

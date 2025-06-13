@@ -225,7 +225,7 @@
               <div style="display: flex; gap: 0.3em; flex-wrap: wrap; align-items: center;">
                 <button (click)="openDetail(emp)">詳細</button>
                 <button (click)="exportEmployeeCSV(emp)" style="background: #4caf50; color: white;">CSV出力</button>
-                <button *ngIf="!emp.uid" (click)="signUpEmployee(emp)" style="background:#ff9800; color:#fff;">サインアップ</button>
+                <button *ngIf="!emp.uid && !emp.employee_code.endsWith('000')" (click)="signUpEmployee(emp)" style="background:#ff9800; color:#fff;">サインアップ</button>
               </div>
             </td>
           </tr>
@@ -315,11 +315,15 @@
                     <option value="退職予定">退職予定</option>
                     <option value="退職">退職</option>
                   </select>
-                  <div class="detail-row" *ngIf="showNewLeaveDates">
-                    <label>出産予定日・育休 開始日</label>
+                  <div class="detail-row" *ngIf="['産休中', '産休中（多胎妊娠）'].includes(newEmployeeForm.get('status')?.value)">
+                    <label>出産予定日</label>
+                    <input type="date" formControlName="expected_delivery_date" />
+                  </div>
+                  <div class="detail-row" *ngIf="newEmployeeForm.get('status')?.value === '育休中'">
+                    <label>育休 開始日</label>
                     <input type="date" formControlName="leave_start_date" />
                   </div>
-                  <div class="detail-row" *ngIf="showNewLeaveDates">
+                  <div class="detail-row" *ngIf="newEmployeeForm.get('status')?.value === '育休中'">
                     <label>育休 終了日</label>
                     <input type="date" formControlName="leave_end_date" />
                   </div>
@@ -576,11 +580,15 @@
                       <option value="退職予定">退職予定</option>
                       <option value="退職">退職</option>
                     </select>
-                    <div class="detail-row" *ngIf="showLeaveDates">
-                      <label>出産予定日（産休）・育休 開始日（育休）</label>
+                    <div class="detail-row" *ngIf="['産休中', '産休中（多胎妊娠）'].includes(detailForm.get('status')?.value)">
+                      <label>出産予定日</label>
+                      <input type="date" formControlName="expected_delivery_date" />
+                    </div>
+                    <div class="detail-row" *ngIf="detailForm.get('status')?.value === '育休中'">
+                      <label>育休 開始日</label>
                       <input type="date" formControlName="leave_start_date" />
                     </div>
-                    <div class="detail-row" *ngIf="showLeaveDates">
+                    <div class="detail-row" *ngIf="detailForm.get('status')?.value === '育休中'">
                       <label>育休 終了日</label>
                       <input type="date" formControlName="leave_end_date" />
                     </div>
@@ -1112,21 +1120,23 @@
           </li>
           <li>
             <b>短時間労働者（週20時間未満など）は原則として社会保険の適用外です。</b><br>
-            ただし、特定適用事業所（従業員51人以上など）では、週20時間以上かつ月収8.8万円以上などの条件を満たすと適用対象となります。
+            ただし、特定適用事業所（従業員51人以上など）では、週20時間以上かつ月収8.8万円以上かつ2ヶ月未満で学生でない（昼間学生以外）
+            の条件を満たすと適用対象となります。
           </li>
           <li>
-            <b>2か所以上の会社で働いている場合、主たる勤務先でのみ社会保険に加入します。</b><br>
-            副業先では原則として社会保険の加入対象外です。
+            <b>年齢によって、会社での社会保険管理外になることがあります。</b><br>
+            判定一覧に注意事項を表示しています。必ずご確認ください。
           </li>
           <li>
             <b>学生は原則として社会保険の適用外です。</b><br>
-            ただし、夜間・通信・定時制の学生（昼間学生以外）は適用対象となる場合があります。
+            ただし、労働時間が週30時間を超えていたり、夜間・通信・定時制の学生（昼間学生以外）は適用対象となる場合があります。
           </li>
           <li>
             <b>産休・育休中は、一定の条件を満たすと社会保険料（健康保険・厚生年金保険）が免除されます。</b><br>
             <ul style="margin: 0.3em 0 0.3em 1.2em; font-size: 0.97em;">
               <li>産前産後休業期間中（出産予定日以前42日（※多胎妊娠の場合は98日）～出産後56日）は、申請により保険料が免除されます。</li>
               <li>育児休業期間中（原則1歳まで、一定条件で最長2歳まで）は、申請により保険料が免除されます。</li>
+              <li>ただし、育休中について月末を含んでいるか、その月の育休期間が14日以上ある場合の月の保険料が免除対象です。</li>
               <li>免除期間中も被保険者資格は継続し、将来の年金額にも影響しません。</li>
               <li>免除を受けるには、事業主を通じて「産前産後休業取得者申出書」「育児休業取得者申出書」等の提出が必要です。</li>
               
@@ -1139,6 +1149,7 @@
           <li>
             <b>実際の雇用契約や勤務実態に基づきます。</b><br>
             システム上の判定結果と実際の加入状況が異なる場合があるため、ご自身でご確認ください。
+            手動で変更できるようにしていますので、たとえば、システム上で免除判定になっていても最終の判断はご担当者様が行ってください。
           </li>
         </ul>
       </div>
@@ -1175,7 +1186,6 @@
     <div class="info-content">
       <p>扶養状態の設定に関する重要な注意事項：</p>
       <ul>
-        <li>扶養されている場合、社会保険料の支払いが免除されます。</li>
         <li>年間収入130万円未満（60歳以上・障害者は180万円未満）の場合に扶養対象となります。</li>
         <li>扶養状態の変更は、社会保険料の計算に影響するため、慎重に設定してください。</li>
         <li>2024年10月1日から社会保険の適用範囲が拡大しています。ご注意ください。</li>

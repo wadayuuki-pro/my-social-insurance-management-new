@@ -228,7 +228,7 @@ export class InsurancePremiumCalculationComponent implements OnInit {
   }
 
   // 四捨五入パターン: 'custom'（0.5以下切り捨て・0.5超切り上げ） or 'round'（0.5未満切り捨て・0.5以上切り上げ）
-  roundingPattern: 'custom' | 'round' = 'custom';
+  roundingPattern: 'custom' | 'round' = 'round';  // デフォルトを'round'に変更
 
   // マスタ管理用
   prefectures: Prefecture[] = [];
@@ -375,7 +375,7 @@ export class InsurancePremiumCalculationComponent implements OnInit {
         name: doc.data()['department_name'] || ''
       }));
     } catch (error) {
-      console.error('Error loading departments:', error);
+      
     }
   }
 
@@ -393,7 +393,7 @@ export class InsurancePremiumCalculationComponent implements OnInit {
       // 事業所選択時のフィルタを反映
       this.filterEmployeesByDepartment();
     } catch (error) {
-      console.error('Error loading employees:', error);
+      
     }
   }
 
@@ -451,11 +451,10 @@ export class InsurancePremiumCalculationComponent implements OnInit {
     if (!this.selectedEmployeeId) return;
 
     try {
-      console.log('選択された従業員ID:', this.selectedEmployeeId);
+      
 
       // 従業員情報を取得
       const employeeDoc = await getDoc(doc(this.firestore, 'employees', this.selectedEmployeeId));
-      console.log('従業員データ:', employeeDoc.exists() ? employeeDoc.data() : '存在しません');
       
       this.selectedEmployeeBirth = null;
       this.selectedEmployeeAge = null;
@@ -480,16 +479,15 @@ export class InsurancePremiumCalculationComponent implements OnInit {
 
         // 等級情報を取得
         this.selectedGrade = employeeData['auto_grade'] || null;
-        console.log('従業員の等級:', this.selectedGrade);
+        
 
         // 部署情報を取得して都道府県IDを設定
         if (employeeData['department_id']) {
           const departmentDoc = await getDoc(doc(this.firestore, 'departments', employeeData['department_id']));
-          console.log('部署データ:', departmentDoc.exists() ? departmentDoc.data() : '存在しません');
+          
           if (departmentDoc.exists()) {
             const departmentData = departmentDoc.data();
             this.selectedPrefectureId = departmentData['prefecture_id'] || '';
-            console.log('設定された都道府県ID:', this.selectedPrefectureId);
 
             // 等級情報を再取得（3月のみ次年度を参照）
             let usedYear = this.selectedYear;
@@ -510,7 +508,7 @@ export class InsurancePremiumCalculationComponent implements OnInit {
       await this.loadBonusAmount();
 
     } catch (error) {
-      console.error('Error loading employee data:', error);
+      
       alert('従業員データの取得に失敗しました');
     }
   }
@@ -592,8 +590,7 @@ export class InsurancePremiumCalculationComponent implements OnInit {
         alert('都道府県・年度を選択してください');
         return;
       }
-      console.log('都道府県ID:', this.selectedPrefectureId);
-      console.log('年度:', this.selectedYear);
+      
 
       // 等級情報の確認
       if (!this.selectedGrade || !this.selectedGradeInfo) {
@@ -656,7 +653,6 @@ export class InsurancePremiumCalculationComponent implements OnInit {
       this.calculationResult['kaigoHalf'] = kaigoHalf;
 
     } catch (error) {
-      console.error('Error calculating insurance:', error);
       alert('保険料の計算中にエラーが発生しました');
     }
   }
@@ -759,9 +755,7 @@ export class InsurancePremiumCalculationComponent implements OnInit {
     const gradesCol = collection(this.firestore, 'prefectures', '全国', 'insurance_premiums', '2025', 'grades');
     const snapshot = await getDocs(gradesCol);
     const ids = snapshot.docs.map(doc => doc.id);
-    console.log('全国/insurance_premiums/2025/gradesのID一覧:', ids);
     snapshot.docs.forEach(doc => {
-      console.log('gradesドキュメント内容:', doc.id, doc.data());
     });
   }
 
@@ -769,11 +763,7 @@ export class InsurancePremiumCalculationComponent implements OnInit {
   async getZenkokuPrefectureTest() {
     const zenkokuDocRef = doc(this.firestore, 'prefectures', '全国');
     const zenkokuDoc = await getDoc(zenkokuDocRef);
-    if (zenkokuDoc.exists()) {
-      console.log('全国ドキュメントの内容:', zenkokuDoc.id, zenkokuDoc.data());
-    } else {
-      console.log('全国ドキュメントは存在しません');
-    }
+  
   }
 
   // 計算結果を保存
@@ -850,7 +840,6 @@ export class InsurancePremiumCalculationComponent implements OnInit {
       await this.insurancePremiumService.saveInsurancePremium(this.selectedEmployeeId, premiumData);
       alert('保険料計算結果を保存しました');
     } catch (error) {
-      console.error('Error saving calculation result:', error);
       alert('保存中にエラーが発生しました');
     }
   }
@@ -891,7 +880,7 @@ export class InsurancePremiumCalculationComponent implements OnInit {
         };
       }
     } catch (error) {
-      console.error('Error loading calculation result:', error);
+      
     }
   }
 
@@ -1012,11 +1001,23 @@ export class InsurancePremiumCalculationComponent implements OnInit {
   // 四捨五入処理
   applyRounding(value: Decimal): Decimal {
     if (this.roundingPattern === 'round') {
-      // 給与から控除する場合は四捨五入
-      return value.round();
+      // 0.5を超えた場合のみ切り上げ、0.5以下の場合は切り捨て
+      const floor = value.floor();
+      const diff = value.minus(floor);
+      if (diff.gt(0.5)) {
+        return floor.plus(1);
+      } else {
+        return floor;
+      }
     } else {
-      // 現金払いの場合は小数点以下切り上げ
-      return value.ceil();
+      // 現金払いの場合は0.5以上の場合のみ切り上げ、0.5未満の場合は切り捨て
+      const floor = value.floor();
+      const diff = value.minus(floor);
+      if (diff.gte(0.5)) {
+        return floor.plus(1);
+      } else {
+        return floor;
+      }
     }
   }
 
@@ -1181,7 +1182,6 @@ export class InsurancePremiumCalculationComponent implements OnInit {
         this.masterGradesError = 'データがありません';
       }
     } catch (error) {
-      console.error('Error loading master data:', error);
       this.masterGradesError = 'データの取得に失敗しました';
     } finally {
       this.isLoadingMasterGrades = false;
@@ -1227,7 +1227,7 @@ export class InsurancePremiumCalculationComponent implements OnInit {
       this.isEditMode = false;
       await this.onMasterSelectionChange();
     } catch (error) {
-      console.error('Error saving master data:', error);
+      
     }
   }
 
@@ -1252,7 +1252,7 @@ export class InsurancePremiumCalculationComponent implements OnInit {
         this.historyPrefectureRatesError = 'データがありません';
       }
     } catch (error) {
-      console.error('Error loading rates:', error);
+      
       this.historyPrefectureRatesError = 'データの取得に失敗しました';
     }
   }
@@ -1308,7 +1308,7 @@ export class InsurancePremiumCalculationComponent implements OnInit {
       this.bonusAmount = totalBonus;
       this.hasBonus = totalBonus.gt(0);
     } catch (error) {
-      console.error('Error loading bonus amount:', error);
+      
       this.bonusAmount = new Decimal(0);
       this.hasBonus = false;
     }
@@ -1379,7 +1379,6 @@ export class InsurancePremiumCalculationComponent implements OnInit {
         const targetBonus = Decimal.min(this.bonusAmount, available);
         // 千円未満を切り捨て
         const flooredBonusAmount = targetBonus.div(1000).floor().mul(1000);
-        console.log('賞与額（千円未満切り捨て後）:', flooredBonusAmount.toNumber());
 
         // 判定取得（insurance_judgementsサブコレクションからhealth, nursing, pension）
         this._lastInsuranceApplicable = await this.getInsuranceApplicableFromJudgement(this.selectedYear, this.selectedMonth);
@@ -1438,7 +1437,6 @@ export class InsurancePremiumCalculationComponent implements OnInit {
         // console.log('賞与計算結果:', this.bonusCalculationResult);
         this.isBonusLoading = false;
     } catch (error) {
-        console.error('Error calculating bonus insurance:', error);
         alert('賞与保険料の計算中にエラーが発生しました');
         this.isBonusLoading = false;
     }
@@ -1505,7 +1503,7 @@ export class InsurancePremiumCalculationComponent implements OnInit {
       await this.insurancePremiumService.saveInsurancePremium(this.selectedEmployeeId, premiumData);
       alert('賞与計算結果を保存しました');
     } catch (error) {
-      console.error('Error saving bonus calculation result:', error);
+      
       alert('保存中にエラーが発生しました');
     }
   }
